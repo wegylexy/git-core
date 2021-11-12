@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.31903.286
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GitCore", "GitCore\GitCore.csproj", "{4E432F9F-E969-45D8-8765-7BA9B986EB20}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GitCore.Tests", "GitCore.Tests\GitCore.Tests.csproj", "{EE2DB237-4ABD-42D0-82C7-88E9B84F9619}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{84A493CF-53D4-465D-BAAD-18EB5361022E}"
+	ProjectSection(SolutionItems) = preProject
+		LICENSE = LICENSE
+		README.md = README.md
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4E432F9F-E969-45D8-8765-7BA9B986EB20}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4E432F9F-E969-45D8-8765-7BA9B986EB20}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4E432F9F-E969-45D8-8765-7BA9B986EB20}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4E432F9F-E969-45D8-8765-7BA9B986EB20}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EE2DB237-4ABD-42D0-82C7-88E9B84F9619}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EE2DB237-4ABD-42D0-82C7-88E9B84F9619}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EE2DB237-4ABD-42D0-82C7-88E9B84F9619}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EE2DB237-4ABD-42D0-82C7-88E9B84F9619}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C07D5FC7-5D36-413D-AD74-767396028DED}
+	EndGlobalSection
+EndGlobal
