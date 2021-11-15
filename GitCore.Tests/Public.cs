@@ -9,10 +9,15 @@ namespace FlyByWireless.GitCore.Tests;
 public class Public
 {
     [Fact]
-    public void HexString()
+    public void Hex()
     {
         var bytes = Guid.NewGuid().ToByteArray();
-        Assert.Equal(string.Join(string.Empty, bytes.Select(b => b.ToString("x2"))), bytes.ToHexString());
+        var hex = string.Join(string.Empty, bytes.Select(b => b.ToString("x2")));
+        Assert.Equal(hex, bytes.ToHexString());
+        Assert.Equal(bytes, hex.ParseHex());
+        var ascii = Encoding.ASCII.GetBytes(hex);
+        Assert.Equal(ascii, bytes.ToHexASCII());
+        Assert.Equal(bytes, ascii.ParseHex());
     }
 
     [Theory]
@@ -70,6 +75,37 @@ public class Public
                 Assert.Equal(o.Data, u.Data.ToArray());
                 ++i;
             }
+        }
+    }
+
+    [Fact]
+    public async Task UploadPackRequestEmptyAsync()
+    {
+        using UploadPackRequest upr = new();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => upr.LoadIntoBufferAsync());
+    }
+
+    [Theory]
+    [InlineData(nameof(SHA1))]
+    [InlineData(nameof(SHA256))]
+    public async Task UploadPackRequestWantAsync(string hashAlgorithm)
+    {
+        using var ha = HashAlgorithm.Create(hashAlgorithm)!;
+        for (var i = 1; i < 4; ++i)
+        {
+            var ids = Enumerable.Range(0, i).Select(_ => ha.ComputeHash(Guid.NewGuid().ToByteArray())).ToList();
+            using UploadPackRequest upr = new(ids.Select(id => (ReadOnlyMemory<byte>)id).ToArray());
+            Assert.Equal("application/x-git-upload-pack-request", upr.Headers.ContentType!.MediaType);
+            StringBuilder sb = new(ids.Count * (10 + ha.HashSize / 4) + 13);
+            var prefix = $"{10 + ha.HashSize / 4:x4}want ";
+            foreach (var id in ids)
+            {
+                sb.Append(prefix);
+                sb.Append(id.ToHexString());
+                sb.Append('\n');
+            }
+            sb.Append("00000009done\n");
+            Assert.Equal(sb.ToString(), await upr.ReadAsStringAsync());
         }
     }
 }

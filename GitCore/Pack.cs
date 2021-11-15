@@ -108,85 +108,88 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
     {
         using var haAll = HashAlgorithm.Create(_hash)!;
         var buffer = GC.AllocateUninitializedArray<byte>(haAll.HashSize / 8);
-        // Enumerates
-        var entries = await CountAsync(cancellationToken);
-        while (entries-- > 0)
         {
-            async Task ReadByteAsync()
+            // Enumerates
+            var entries = await CountAsync(cancellationToken);
+            using var ha = HashAlgorithm.Create(_hash)!;
+            while (entries-- > 0)
             {
-                if (await _stream.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) == 0)
+                async Task ReadByteAsync()
                 {
-                    throw new EndOfStreamException();
+                    if (await _stream.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) == 0)
+                    {
+                        throw new EndOfStreamException();
+                    }
                 }
-            }
-            await ReadByteAsync();
-            long size = buffer[0];
-            var type = (ObjectType)((size >> 4) & 0b111);
-            size &= 0b1111;
-            for (var s = 4; (buffer[0] & 0b10000000) != 0; s += 7)
-            {
                 await ReadByteAsync();
-                size |= (buffer[0] & 0b1111111L) << s;
-            }
-            if (type is ObjectType.OffsetDelta or ObjectType.ReferenceDelta)
-            {
-                throw new NotSupportedException("Deltified representation not supported");
-            }
-            else
-            {
-                ReadOnlySequence<byte> data;
-                ReadOnlyMemory<byte> hash;
+                long size = buffer[0];
+                var type = (ObjectType)((size >> 4) & 0b111);
+                size &= 0b1111;
+                for (var s = 4; (buffer[0] & 0b10000000) != 0; s += 7)
                 {
-                    using var ha = HashAlgorithm.Create(_hash)!;
-                    {
-                        var t = type switch
-                        {
-                            ObjectType.Commit => "commit",
-                            ObjectType.Tree => "tree",
-                            ObjectType.Blob => "blob",
-                            ObjectType.Tag => "tag",
-                            _ => throw new InvalidDataException("Invalid object type")
-                        };
-                        var prolog = Encoding.ASCII.GetBytes(FormattableString.Invariant($"{t} {size}\0"));
-                        ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
-                    }
-                    if (size > 0)
-                    {
-                        Stack<ReadOnlyMemory<byte>> segments = new();
-                        {
-                            using ZLibStream zls = new(_stream, CompressionMode.Decompress, true);
-                            for (var read = 0; read < size;)
-                            {
-                                var b = GC.AllocateUninitializedArray<byte>((int)Math.Min(size - read, _MaxChunkSize));
-                                var r = await zls.ReadAsync(b, cancellationToken);
-                                if (r == 0)
-                                {
-                                    throw new EndOfStreamException();
-                                }
-                                segments.Push(b.AsMemory(0, r));
-                                ha.TransformBlock(b, 0, r, null, 0);
-                                read += r;
-                            }
-                            _ = _stream.Push(zls.GetInputBuffer());
-                        }
-                        var runningIndex = size;
-                        var last = segments.Pop();
-                        ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
-                        while (segments.TryPop(out var previous))
-                        {
-                            start = new(previous, start, runningIndex -= previous.Length);
-                        }
-                        data = new(start, 0, end, end.Memory.Length);
-                    }
-                    else
-                    {
-                        data = ReadOnlySequence<byte>.Empty;
-                    }
-                    ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                    haAll.TransformBlock(ha.Hash!, 0, ha.Hash!.Length, null, 0);
-                    hash = ha.Hash!;
+                    await ReadByteAsync();
+                    size |= (buffer[0] & 0b1111111L) << s;
                 }
-                yield return new(type, size, data, hash);
+                if (type is ObjectType.OffsetDelta or ObjectType.ReferenceDelta)
+                {
+                    throw new NotSupportedException("Deltified representation not supported");
+                }
+                else
+                {
+                    ReadOnlySequence<byte> data;
+                    ReadOnlyMemory<byte> hash;
+                    {
+                        ha.Initialize();
+                        {
+                            var t = type switch
+                            {
+                                ObjectType.Commit => "commit",
+                                ObjectType.Tree => "tree",
+                                ObjectType.Blob => "blob",
+                                ObjectType.Tag => "tag",
+                                _ => throw new InvalidDataException("Invalid object type")
+                            };
+                            var prolog = Encoding.ASCII.GetBytes(FormattableString.Invariant($"{t} {size}\0"));
+                            ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
+                        }
+                        if (size > 0)
+                        {
+                            Stack<ReadOnlyMemory<byte>> segments = new();
+                            {
+                                using ZLibStream zls = new(_stream, CompressionMode.Decompress, true);
+                                for (var read = 0; read < size;)
+                                {
+                                    var b = GC.AllocateUninitializedArray<byte>((int)Math.Min(size - read, _MaxChunkSize));
+                                    var r = await zls.ReadAsync(b, cancellationToken);
+                                    if (r == 0)
+                                    {
+                                        throw new EndOfStreamException();
+                                    }
+                                    segments.Push(b.AsMemory(0, r));
+                                    ha.TransformBlock(b, 0, r, null, 0);
+                                    read += r;
+                                }
+                                _ = _stream.Push(zls.GetInputBuffer());
+                            }
+                            var runningIndex = size;
+                            var last = segments.Pop();
+                            ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
+                            while (segments.TryPop(out var previous))
+                            {
+                                start = new(previous, start, runningIndex -= previous.Length);
+                            }
+                            data = new(start, 0, end, end.Memory.Length);
+                        }
+                        else
+                        {
+                            data = ReadOnlySequence<byte>.Empty;
+                        }
+                        ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+                        haAll.TransformBlock(ha.Hash!, 0, ha.Hash!.Length, null, 0);
+                        hash = ha.Hash!;
+                    }
+                    yield return new(type, size, data, hash);
+                }
             }
         }
         // Asserts checksum

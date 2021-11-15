@@ -8,7 +8,24 @@
 		<PackageId>$(RootNamespace)</PackageId>
 		<VersionPrefix>1.0.0</VersionPrefix>
 		<VersionSuffix>alpha</VersionSuffix>
+		<Authors>WONG Tin Chi Timothy</Authors>
+		<Description>Essentials to implement a custom managed Git client for incremental updates of huge downloadable contents (DLC) published to a Git repository.</Description>
+		<Copyright>Copyright (c) 2021 $(Authors)</Copyright>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<RepositoryUrl>https://github.com/wegylexy/git-core</RepositoryUrl>
+		<PackageTags>git;smart http;gitpack;zlib;zlibstream</PackageTags>
+		<PackageLicenseFile>LICENSE</PackageLicenseFile>
 	</PropertyGroup>
+	<ItemGroup>
+		<None Include="../README.md">
+			<Pack>True</Pack>
+			<PackagePath></PackagePath>
+		</None>
+		<None Include="../LICENSE">
+			<Pack>True</Pack>
+			<PackagePath></PackagePath>
+		</None>
+	</ItemGroup>
 	<ItemGroup>
 		<PackageReference Include="System.IO.Pipelines" Version="6.0.0" />
 	</ItemGroup>
