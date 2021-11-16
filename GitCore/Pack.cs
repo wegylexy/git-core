@@ -17,7 +17,7 @@ public enum ObjectType
     ReferenceDelta
 }
 
-public record struct UnpackedObject(ObjectType Type, long Size, ReadOnlySequence<byte> Data, ReadOnlyMemory<byte> Hash)
+public readonly record struct UnpackedObject(ObjectType Type, long Size, ReadOnlySequence<byte> Data, ReadOnlyMemory<byte> Hash)
 {
     public override string ToString() =>
         FormattableString.Invariant(@$"{Type switch
@@ -28,6 +28,8 @@ public record struct UnpackedObject(ObjectType Type, long Size, ReadOnlySequence
             ObjectType.Tag => "tag",
             _ => throw new InvalidDataException("Invalid object type")
         }} {Size} {Hash.ToHexString()}");
+
+    public Stream AsStream() => new SequenceStream(Data);
 }
 
 public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>

@@ -62,7 +62,7 @@ internal class StackStream : Stream
     {
         if (buffer.IsEmpty)
         {
-            return _stack.Count > 0 ? 0 : await _stream.ReadAsync(buffer);
+            return _stack.Count > 0 ? 0 : await _stream.ReadAsync(buffer, cancellationToken);
         }
         var totalRead = 0;
         while (!buffer.IsEmpty && _stack.TryPop(out var rom))

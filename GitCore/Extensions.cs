@@ -1,9 +1,6 @@
-﻿using System;
-using System.Buffers;
-using System.Drawing;
+﻿using System.Buffers;
 using System.IO.Compression;
 using System.Linq.Expressions;
-using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -42,6 +39,9 @@ public static class HttpExtensions
         client.DefaultRequestHeaders.Authorization = new("Basic",
             Convert.ToBase64String(Encoding.ASCII.GetBytes($"{HttpUtility.UrlEncode(username)}:{HttpUtility.UrlEncode(password)}"))
         );
+
+    public static async Task<UploadPackAdvertisement> GetUploadPackAsync(this HttpClient client, HttpCompletionOption completionOption = HttpCompletionOption.ResponseHeadersRead, CancellationToken cancellationToken = default) =>
+        new(await client.GetAsync("info/refs?service=git-upload-pack", completionOption, cancellationToken));
 
     public static Task<HttpResponseMessage> PostAsync(this HttpClient client, HttpCompletionOption completionOption, CancellationToken cancellationToken = default) =>
         client.SendAsync(new(HttpMethod.Post, null as Uri), completionOption, cancellationToken);
