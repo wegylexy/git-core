@@ -71,11 +71,11 @@ public class Trees
         ReadOnlyPack rop = new(s);
         await foreach (var o in rop)
         {
-            _output.WriteLine(o.ToString());
             switch (o.Type)
             {
                 case ObjectType.Tree:
                     {
+                        _output.WriteLine(o.ToString());
                         StackStream ss = new(o.AsStream());
                         ss.Push(o.Prolog);
                         await foreach (var e in new Tree(ss))
@@ -83,6 +83,12 @@ public class Trees
                             _output.WriteLine("\t" + e.ToString());
                         }
                     }
+                    break;
+                case ObjectType.ReferenceDelta:
+                    _output.WriteLine($"(delta {o.Size} from {o.Hash.ToHexString()})");
+                    break;
+                default:
+                    _output.WriteLine(o.ToString());
                     break;
             }
         }

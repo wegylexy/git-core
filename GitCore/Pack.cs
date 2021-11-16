@@ -30,7 +30,7 @@ public readonly record struct UnpackedObject(ObjectType Type, long Size, ReadOnl
 
     internal static byte[] PrologBytes(ObjectType type, long size) => Encoding.ASCII.GetBytes($"{TypeString(type)} {size}\0");
 
-    public ReadOnlyMemory<byte> Prolog { get; internal init; } = PrologBytes(Type, Size);
+    public ReadOnlyMemory<byte> Prolog { get; internal init; } = default;
 
     public override string ToString() =>
         FormattableString.Invariant($"{TypeString(Type)} {Size} {Hash.ToHexString()}");
@@ -116,7 +116,8 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
 
     public async IAsyncEnumerator<UnpackedObject> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        var buffer = GC.AllocateUninitializedArray<byte>(_hs.HashSize / 8);
+        var hashSize = _hs.HashSize / 8;
+        var buffer = GC.AllocateUninitializedArray<byte>(Math.Max(hashSize, 20));
         {
             // Enumerates
             var entries = await CountAsync(cancellationToken);
@@ -139,9 +140,48 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
                     await ReadByteAsync();
                     size |= (buffer[0] & 0b1111111L) << s;
                 }
-                if (type is ObjectType.OffsetDelta or ObjectType.ReferenceDelta)
+                if (type == ObjectType.OffsetDelta)
                 {
-                    throw new NotSupportedException("Deltified representation not supported");
+                    throw new NotSupportedException("Offset delta not supported");
+                }
+                else if (type == ObjectType.ReferenceDelta)
+                {
+                    for (var read = 0; read < 20;)
+                    {
+                        var r = await _hs.ReadAsync(buffer.AsMemory(read, 20 - read), cancellationToken);
+                        if (r == 0)
+                        {
+                            throw new EndOfStreamException();
+                        }
+                        read += r;
+                    }
+                    Stack<ReadOnlyMemory<byte>> segments = new();
+                    {
+                        using ZLibStream zls = new(_hs, CompressionMode.Decompress, true);
+                        for (var read = 0; read < size;)
+                        {
+                            var b = GC.AllocateUninitializedArray<byte>((int)Math.Min(size - read, _MaxChunkSize));
+                            var r = await zls.ReadAsync(b, cancellationToken);
+                            if (r == 0)
+                            {
+                                throw new EndOfStreamException();
+                            }
+                            segments.Push(b.AsMemory(0, r));
+                            ha.TransformBlock(b, 0, r, null, 0);
+                            read += r;
+                        }
+                        var i = zls.GetInputBuffer();
+                        _hs.Unread(i.Length);
+                        _ = _ss.Push(i);
+                    }
+                    var runningIndex = size;
+                    var last = segments.Pop();
+                    ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
+                    while (segments.TryPop(out var previous))
+                    {
+                        start = new(previous, start, runningIndex -= previous.Length);
+                    }
+                    yield return new(type, size, new(start, 0, end, end.Memory.Length), buffer.ToArray());
                 }
                 else
                 {
@@ -149,9 +189,7 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
                     ReadOnlyMemory<byte> hash;
                     var prolog = UnpackedObject.PrologBytes(type, size);
                     ha.Initialize();
-                    {
-                        ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
-                    }
+                    ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
                     if (size > 0)
                     {
                         Stack<ReadOnlyMemory<byte>> segments = new();
@@ -196,9 +234,9 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
             }
         }
         // Asserts checksum
-        for (var read = 0; read < buffer.Length;)
+        for (var read = 0; read < hashSize;)
         {
-            var r = await _ss.ReadAsync(buffer.AsMemory(read), cancellationToken);
+            var r = await _ss.ReadAsync(buffer.AsMemory(read, hashSize - read), cancellationToken);
             if (r == 0)
             {
                 throw new EndOfStreamException();
@@ -206,7 +244,7 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
             read += r;
         }
         _hs.ComputeHash();
-        if (!_hs.Hash.Span.SequenceEqual(buffer))
+        if (!buffer.AsSpan(0, hashSize).SequenceEqual(_hs.Hash.Span))
         {
             throw new InvalidDataException("Checksum fail");
         }
