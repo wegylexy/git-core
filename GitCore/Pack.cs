@@ -19,22 +19,28 @@ public enum ObjectType
 
 public readonly record struct UnpackedObject(ObjectType Type, long Size, ReadOnlySequence<byte> Data, ReadOnlyMemory<byte> Hash)
 {
+    internal static string TypeString(ObjectType type) => type switch
+    {
+        ObjectType.Commit => "commit",
+        ObjectType.Tree => "tree",
+        ObjectType.Blob => "blob",
+        ObjectType.Tag => "tag",
+        _ => throw new InvalidDataException("Invalid object type")
+    };
+
+    internal static byte[] PrologBytes(ObjectType type, long size) => Encoding.ASCII.GetBytes($"{TypeString(type)} {size}\0");
+
+    public ReadOnlyMemory<byte> Prolog { get; internal init; } = PrologBytes(Type, Size);
+
     public override string ToString() =>
-        FormattableString.Invariant(@$"{Type switch
-        {
-            ObjectType.Commit => "commit",
-            ObjectType.Tree => "tree",
-            ObjectType.Blob => "blob",
-            ObjectType.Tag => "tag",
-            _ => throw new InvalidDataException("Invalid object type")
-        }} {Size} {Hash.ToHexString()}");
+        FormattableString.Invariant($"{TypeString(Type)} {Size} {Hash.ToHexString()}");
 
     public Stream AsStream() => new SequenceStream(Data);
 }
 
 public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
 {
-    private class ObjectSegment : ReadOnlySequenceSegment<byte>
+    private sealed class ObjectSegment : ReadOnlySequenceSegment<byte>
     {
         public ObjectSegment(ReadOnlyMemory<byte> memory, ReadOnlySequenceSegment<byte>? next, long runningIndex)
         {
@@ -44,9 +50,11 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
         }
     }
 
-    private readonly StackStream _stream;
+    private readonly StackStream _ss;
 
     private readonly string _hash;
+
+    private readonly HashStream _hs;
 
     private int _MaxChunkSize = 16384;
     public int MaxChunkSize
@@ -66,8 +74,8 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
 
     public ReadOnlyPack(Stream stream, string hashAlgorithm = nameof(SHA1))
     {
-        _stream = stream is StackStream ss ? ss : new(stream, true);
-        _hash = hashAlgorithm;
+        _ss = stream is StackStream ss ? ss : new(stream, true);
+        _hs = new(_ss, _hash = hashAlgorithm, true);
     }
 
     public async ValueTask<long> CountAsync(CancellationToken cancellationToken = default)
@@ -80,9 +88,9 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
         try
         {
             // Reads at least 12 bytes
-            for (var read = 0; read < 12 && !cancellationToken.IsCancellationRequested; read += await _stream.ReadAsync(buffer.AsMemory()[read..12], cancellationToken)) { }
+            for (var read = 0; read < 12 && !cancellationToken.IsCancellationRequested; read += await _hs.ReadAsync(buffer.AsMemory()[read..12], cancellationToken)) { }
             // Asserts PACK
-            if (BitConverter.ToInt32(buffer, 0) != (BitConverter.IsLittleEndian ? 0x4b_43_41_50 : 0x50_41_43_4b))
+            if (BitConverter.ToInt32(buffer, 0) != (BitConverter.IsLittleEndian ? 0x4b_43_41_50 : 0x50_41_43_4b)) // "PACK"
             {
                 throw new InvalidDataException("PACK signature mismatch");
             }
@@ -108,8 +116,7 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
 
     public async IAsyncEnumerator<UnpackedObject> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        using var haAll = HashAlgorithm.Create(_hash)!;
-        var buffer = GC.AllocateUninitializedArray<byte>(haAll.HashSize / 8);
+        var buffer = GC.AllocateUninitializedArray<byte>(_hs.HashSize / 8);
         {
             // Enumerates
             var entries = await CountAsync(cancellationToken);
@@ -118,7 +125,7 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
             {
                 async Task ReadByteAsync()
                 {
-                    if (await _stream.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) == 0)
+                    if (await _hs.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) == 0)
                     {
                         throw new EndOfStreamException();
                     }
@@ -140,72 +147,66 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
                 {
                     ReadOnlySequence<byte> data;
                     ReadOnlyMemory<byte> hash;
+                    var prolog = UnpackedObject.PrologBytes(type, size);
+                    ha.Initialize();
                     {
-                        ha.Initialize();
-                        {
-                            var t = type switch
-                            {
-                                ObjectType.Commit => "commit",
-                                ObjectType.Tree => "tree",
-                                ObjectType.Blob => "blob",
-                                ObjectType.Tag => "tag",
-                                _ => throw new InvalidDataException("Invalid object type")
-                            };
-                            var prolog = Encoding.ASCII.GetBytes(FormattableString.Invariant($"{t} {size}\0"));
-                            ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
-                        }
-                        if (size > 0)
-                        {
-                            Stack<ReadOnlyMemory<byte>> segments = new();
-                            {
-                                using ZLibStream zls = new(_stream, CompressionMode.Decompress, true);
-                                for (var read = 0; read < size;)
-                                {
-                                    var b = GC.AllocateUninitializedArray<byte>((int)Math.Min(size - read, _MaxChunkSize));
-                                    var r = await zls.ReadAsync(b, cancellationToken);
-                                    if (r == 0)
-                                    {
-                                        throw new EndOfStreamException();
-                                    }
-                                    segments.Push(b.AsMemory(0, r));
-                                    ha.TransformBlock(b, 0, r, null, 0);
-                                    read += r;
-                                }
-                                _ = _stream.Push(zls.GetInputBuffer());
-                            }
-                            var runningIndex = size;
-                            var last = segments.Pop();
-                            ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
-                            while (segments.TryPop(out var previous))
-                            {
-                                start = new(previous, start, runningIndex -= previous.Length);
-                            }
-                            data = new(start, 0, end, end.Memory.Length);
-                        }
-                        else
-                        {
-                            data = ReadOnlySequence<byte>.Empty;
-                        }
-                        ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                        haAll.TransformBlock(ha.Hash!, 0, ha.Hash!.Length, null, 0);
-                        hash = ha.Hash!;
+                        ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
                     }
-                    yield return new(type, size, data, hash);
+                    if (size > 0)
+                    {
+                        Stack<ReadOnlyMemory<byte>> segments = new();
+                        {
+                            using ZLibStream zls = new(_hs, CompressionMode.Decompress, true);
+                            for (var read = 0; read < size;)
+                            {
+                                var b = GC.AllocateUninitializedArray<byte>((int)Math.Min(size - read, _MaxChunkSize));
+                                var r = await zls.ReadAsync(b, cancellationToken);
+                                if (r == 0)
+                                {
+                                    throw new EndOfStreamException();
+                                }
+                                segments.Push(b.AsMemory(0, r));
+                                ha.TransformBlock(b, 0, r, null, 0);
+                                read += r;
+                            }
+                            var i = zls.GetInputBuffer();
+                            _hs.Unread(i.Length);
+                            _ = _ss.Push(i);
+                        }
+                        var runningIndex = size;
+                        var last = segments.Pop();
+                        ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
+                        while (segments.TryPop(out var previous))
+                        {
+                            start = new(previous, start, runningIndex -= previous.Length);
+                        }
+                        data = new(start, 0, end, end.Memory.Length);
+                    }
+                    else
+                    {
+                        data = ReadOnlySequence<byte>.Empty;
+                    }
+                    ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+                    hash = ha.Hash!;
+                    yield return new(type, size, data, hash)
+                    {
+                        Prolog = prolog
+                    };
                 }
             }
         }
         // Asserts checksum
         for (var read = 0; read < buffer.Length;)
         {
-            var r = await _stream.ReadAsync(buffer.AsMemory(read), cancellationToken);
+            var r = await _ss.ReadAsync(buffer.AsMemory(read), cancellationToken);
             if (r == 0)
             {
                 throw new EndOfStreamException();
             }
             read += r;
         }
-        haAll.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-        if (!haAll.Hash!.SequenceEqual(buffer))
+        _hs.ComputeHash();
+        if (!_hs.Hash.Span.SequenceEqual(buffer))
         {
             throw new InvalidDataException("Checksum fail");
         }

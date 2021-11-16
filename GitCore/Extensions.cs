@@ -43,8 +43,18 @@ public static class HttpExtensions
     public static async Task<UploadPackAdvertisement> GetUploadPackAsync(this HttpClient client, HttpCompletionOption completionOption = HttpCompletionOption.ResponseHeadersRead, CancellationToken cancellationToken = default) =>
         new(await client.GetAsync("info/refs?service=git-upload-pack", completionOption, cancellationToken));
 
-    public static Task<HttpResponseMessage> PostAsync(this HttpClient client, HttpCompletionOption completionOption, CancellationToken cancellationToken = default) =>
-        client.SendAsync(new(HttpMethod.Post, null as Uri), completionOption, cancellationToken);
+    public static async Task<HttpResponseMessage> PostUploadPackAsync(this HttpClient client, UploadPackRequest request, HttpCompletionOption completionOption, CancellationToken cancellationToken = default)
+    {
+        var r = await client.SendAsync(new(HttpMethod.Post, "git-upload-pack")
+        {
+            Content = request
+        }, completionOption, cancellationToken);
+        if (r.EnsureSuccessStatusCode().Content.Headers.ContentType is not { MediaType: "application/x-git-upload-pack-result" })
+        {
+            throw new InvalidOperationException("Unexpected media type");
+        }
+        return r;
+    }
 }
 
 public static class ByteExtensions

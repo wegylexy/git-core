@@ -24,7 +24,7 @@ public readonly record struct TreeEntry(int Mode, string Path, ReadOnlyMemory<by
         $"{Convert.ToString(Mode, 8).PadLeft(6, '0')} {(Type.HasFlag(TreeEntryType.Tree) ? "tree" : "blob")} {Hash.ToHexString()}\t{Path}";
 }
 
-public class Tree : IAsyncEnumerable<TreeEntry>
+public sealed class Tree : IAsyncEnumerable<TreeEntry>
 {
     public static async IAsyncEnumerable<TreeEntry> EnumerateAsync(string path, bool recusrive = false)
     {

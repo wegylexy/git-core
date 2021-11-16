@@ -2,7 +2,7 @@
 
 namespace FlyByWireless.GitCore;
 
-public class SequenceStream : Stream
+internal sealed class SequenceStream : Stream
 {
     private readonly ReadOnlySequence<byte> _sequence;
 
@@ -16,12 +16,21 @@ public class SequenceStream : Stream
 
     public override void Flush() => throw new InvalidOperationException();
 
-    public override int Read(byte[] buffer, int offset, int count)
+    public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+    public override int Read(Span<byte> buffer)
     {
-        count = (int)Math.Min(count, Length - Position);
-        _sequence.Slice(Position, count).CopyTo(buffer.AsSpan(offset, count));
-        return count;
+        var read = (int)Math.Min(buffer.Length, Length - Position);
+        _sequence.Slice(Position, read).CopyTo(buffer);
+        Position += read;
+        return read;
     }
+
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+        Task.FromResult(Read(buffer, offset, count));
+
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Read(buffer.Span));
 
     public override long Seek(long offset, SeekOrigin origin) => Position = origin switch
     {

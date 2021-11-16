@@ -3,7 +3,7 @@ using System.Text;
 
 namespace FlyByWireless.GitCore;
 
-public class UploadPackRequest : HttpContent
+public sealed class UploadPackRequest : HttpContent
 {
     private readonly IEnumerable<ReadOnlyMemory<byte>> _want;
     private readonly IEnumerable<ReadOnlyMemory<byte>>? _have;

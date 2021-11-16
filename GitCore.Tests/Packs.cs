@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Xunit;
@@ -29,29 +30,30 @@ public class Packs
         }).ToList();
         objects.Sort((a, b) =>
             a.Hash == b.Hash ? 0 : a.Hash.AsSpan().SequenceCompareTo(b.Hash));
-        using MemoryStream pack = new();
+        using MemoryStream ms = new();
+        using HashStream hs = new(ms, hashAlgorithm, true);
         {
-            using var haAll = HashAlgorithm.Create(hashAlgorithm)!;
-            using BinaryWriter writer = new(pack, Encoding.ASCII, true);
-            writer.Write(BitConverter.IsLittleEndian ? 0x4b_43_41_50 : 0x50_41_43_4b);
-            writer.Write(BitConverter.IsLittleEndian ? 2 << 24 : 2);
-            writer.Write(BitConverter.IsLittleEndian ? objects.Count << 24 : objects.Count);
-            writer.Flush();
+            {
+                var buffer = GC.AllocateUninitializedArray<byte>(12);
+                MemoryMarshal.AsRef<int>(buffer.AsSpan(0, 4)) = BitConverter.IsLittleEndian ? 0x4b_43_41_50 : 0x50_41_43_4b;
+                MemoryMarshal.AsRef<int>(buffer.AsSpan(4, 4)) = BitConverter.IsLittleEndian ? 2 << 24 : 2;
+                MemoryMarshal.AsRef<int>(buffer.AsSpan(8, 4)) = BitConverter.IsLittleEndian ? objects.Count << 24 : objects.Count;
+                hs.Write(buffer);
+            }
+            using BinaryWriter writer = new(hs, Encoding.ASCII, true);
             foreach (var o in objects)
             {
                 writer.Write((byte)0b10110000);
                 writer.Write((byte)0b00000001);
-                using ZLibStream zls = new(pack, CompressionLevel.SmallestSize, true);
+                using ZLibStream zls = new(hs, CompressionLevel.SmallestSize, true);
                 zls.Write(o.Data);
                 zls.Flush();
-                haAll.TransformBlock(o.Hash, 0, o.Hash.Length, null, 0);
             }
-            haAll.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-            pack.Write(haAll.Hash);
-            pack.Flush();
-            pack.Position = 0;
+            hs.ComputeHash();
+            ms.Write(hs.Hash.Span);
+            ms.Position = 0;
         }
-        ReadOnlyPack rop = new(pack, hashAlgorithm: hashAlgorithm);
+        ReadOnlyPack rop = new(ms, hashAlgorithm);
         Assert.Equal(objects.Count, await rop.CountAsync());
         {
             var i = 0;

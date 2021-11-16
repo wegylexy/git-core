@@ -1,12 +1,55 @@
 ﻿using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using Xunit;
 
 namespace FlyByWireless.GitCore.Tests;
 
 public class Internal
 {
+    [Theory]
+    [InlineData(nameof(SHA1))]
+    [InlineData(nameof(SHA256))]
+    public void Hash(string hashAlgorithm)
+    {
+        var raw = Guid.NewGuid().ToByteArray();
+        byte[] expected;
+        {
+            using var ha = HashAlgorithm.Create(hashAlgorithm)!;
+            ha.ComputeHash(raw);
+            expected = ha.Hash!;
+        }
+        {
+            using MemoryStream ms = new();
+            using HashStream hs = new(ms, hashAlgorithm, true);
+            hs.Write(raw);
+            hs.ComputeHash();
+            Assert.Equal(expected, hs.Hash.ToArray());
+        }
+        {
+            using MemoryStream ms = new(raw);
+            using HashStream hs = new(ms, hashAlgorithm, true);
+            var buffer = GC.AllocateUninitializedArray<byte>(raw.Length);
+            hs.Read(buffer);
+            hs.Unread(4);
+            ms.Seek(-4, SeekOrigin.Current);
+            hs.Read(buffer.AsSpan(0, 4));
+            hs.ComputeHash();
+            Assert.Equal(expected, hs.Hash.ToArray());
+        }
+    }
+
+    [Fact]
+    public void Sequence()
+    {
+        var expected = Guid.NewGuid().ToByteArray();
+        SequenceStream ss = new(new(expected));
+        var actual = new byte[ss.Length];
+        ss.Read(actual);
+        Assert.Equal(expected, actual);
+    }
+
     [Fact]
     public void Stack()
     {

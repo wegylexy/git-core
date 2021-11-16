@@ -3,7 +3,7 @@ using System.Text;
 
 namespace FlyByWireless.GitCore;
 
-public class UploadPackAdvertisement : IAsyncEnumerable<KeyValuePair<string, ReadOnlyMemory<byte>>>
+public sealed class UploadPackAdvertisement : IAsyncEnumerable<KeyValuePair<string, ReadOnlyMemory<byte>>>
 {
     private readonly HttpResponseMessage _response;
 
