@@ -1,6 +1,4 @@
-﻿using System.Buffers;
-using System.Text;
-using Xunit;
+﻿using Xunit;
 using Xunit.Abstractions;
 
 namespace FlyByWireless.GitCore.Tests;
@@ -42,42 +40,28 @@ public class Trees
     [InlineData("d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d")]
     public async Task RemoteTreeAsync(string treeHex)
     {
+        ReadOnlyMemory<byte> want = treeHex.ParseHex(), have = "1ff0c423042b46cb1d617b81efb715defbe8054d".ParseHex();
         using HttpClient hc = new()
         {
             BaseAddress = new("https://github.com/wegylexy/git-core.git/")
         };
-        using var hrm = await hc.PostUploadPackAsync(new(treeHex.ParseHex()), HttpCompletionOption.ResponseHeadersRead);
-        using var s = await hrm.Content.ReadAsStreamAsync();
-        {
-            var a = ArrayPool<byte>.Shared.Rent(8);
-            try
-            {
-                for (var read = 0; read < 8;)
-                {
-                    var r = await s.ReadAsync(a.AsMemory(read, 8 - read));
-                    if (r == 0)
-                    {
-                        throw new EndOfStreamException();
-                    }
-                    read += r;
-                }
-                Assert.Equal(Encoding.ASCII.GetBytes("0008NAK\n"), a.Take(8));
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(a);
-            }
-        }
-        AsyncPack pack = new(s);
+        using var r = await hc.PostUploadPackAsync(new(new[] { want }, new[] { have }));
         List<UnpackedObject> os = new();
-        List<ReadOnlyMemory<byte>> hs = new();
-        await foreach (var o in pack)
+        List<ReadOnlyMemory<byte>> ts = new(), hs = new();
+        await foreach (var o in r.Pack)
         {
-            _output.WriteLine(o.ToString());
-            switch (o.Type)
+            var co = o;
+        Triage:
+            Assert.False(co.Hash.Span.SequenceEqual(have.Span));
+            _output.WriteLine(co.ToString());
+            switch (co.Type)
             {
+                case ObjectType.Blob:
+                    os.Add(co);
+                    break;
                 case ObjectType.Tree:
-                    await foreach (var e in o.AsTree())
+                    ts.Add(co.Hash);
+                    await foreach (var e in co.AsTree())
                     {
                         _output.WriteLine("\t" + e.ToString());
                         hs.Add(e.Hash);
@@ -85,18 +69,24 @@ public class Trees
                     break;
                 case ObjectType.ReferenceDelta:
                     {
-                        var d = o.Delta(os.First(b => b.Hash.Span.SequenceEqual(o.Hash.Span)));
-                        Assert.Contains(hs, h => h.Span.SequenceEqual(d.Hash.Span));
-                        os.Add(d);
-                        _output.WriteLine("\t" + d.ToString());
+                        var b = os.FirstOrDefault(b => b.Hash.Span.SequenceEqual(co.Hash.Span));
+                        if (b.Type == default)
+                        {
+                            _output.WriteLine("\t(reference not found)");
+                        }
+                        else
+                        {
+                            co = co.Delta(b);
+                            Assert.Contains(hs, h => h.Span.SequenceEqual(co.Hash.Span));
+                            os.Add(co);
+                            goto Triage;
+                        }
                     }
-                    break;
-                case ObjectType.Blob:
-                    os.Add(o);
                     break;
                 default:
                     throw new NotSupportedException("Unexpected type");
             }
         }
+        Assert.Contains(ts, h => h.Span.SequenceEqual(want.Span));
     }
 }

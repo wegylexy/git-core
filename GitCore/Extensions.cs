@@ -43,18 +43,8 @@ public static class HttpExtensions
     public static async Task<UploadPackAdvertisement> GetUploadPackAsync(this HttpClient client, HttpCompletionOption completionOption = HttpCompletionOption.ResponseHeadersRead, CancellationToken cancellationToken = default) =>
         new(await client.GetAsync("info/refs?service=git-upload-pack", completionOption, cancellationToken));
 
-    public static async Task<HttpResponseMessage> PostUploadPackAsync(this HttpClient client, UploadPackRequest request, HttpCompletionOption completionOption, CancellationToken cancellationToken = default)
-    {
-        var r = await client.SendAsync(new(HttpMethod.Post, "git-upload-pack")
-        {
-            Content = request
-        }, completionOption, cancellationToken);
-        if (r.EnsureSuccessStatusCode().Content.Headers.ContentType is not { MediaType: "application/x-git-upload-pack-result" })
-        {
-            throw new InvalidOperationException("Unexpected media type");
-        }
-        return r;
-    }
+    public static Task<UploadPackResponse> PostUploadPackAsync(this HttpClient client, UploadPackRequest request, string hashAlgorithm = nameof(SHA1), CancellationToken cancellationToken = default) =>
+        UploadPackResponse.RequestAsync(client, request, hashAlgorithm, cancellationToken);
 }
 
 public static class ByteExtensions
@@ -136,14 +126,15 @@ public static class ByteExtensions
     public static byte[] ParseHex(this string hex) =>
         ((ReadOnlySpan<char>)hex).ParseHex();
 
+    public static int ParseHex(this byte ascii) => ascii - (ascii >= 'a' ? 'a' - 10 : ascii >= 'A' ? 'A' - 10 : '0') is < 0x10 and var c ? c :
+        throw new ArgumentOutOfRangeException(nameof(ascii));
+
     public static void ParseHex(this in ReadOnlySpan<byte> hex, Span<byte> bytes)
     {
-        static int C(byte a) => a - (a >= 'a' ? 'a' - 10 : a >= 'A' ? 'A' - 10 : '0') is < 0x10 and var c ? c :
-            throw new ArgumentOutOfRangeException(nameof(hex));
         var length = hex.Length / 2;
         for (var i = 0; i < length; ++i)
         {
-            bytes[i] = (byte)((C(hex[i * 2]) << 4) | C(hex[i * 2 + 1]));
+            bytes[i] = (byte)((ParseHex(hex[i * 2]) << 4) | ParseHex(hex[i * 2 + 1]));
         }
     }
 

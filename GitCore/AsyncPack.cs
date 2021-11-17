@@ -229,7 +229,7 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
             // Reads at least 12 bytes
             for (var read = 0; read < 12 && !cancellationToken.IsCancellationRequested; read += await _hs.ReadAsync(buffer.AsMemory()[read..12], cancellationToken)) { }
             // Asserts PACK
-            if (BitConverter.ToInt32(buffer, 0) != (BitConverter.IsLittleEndian ? 0x4b_43_41_50 : 0x50_41_43_4b)) // "PACK"
+            if (BitConverter.ToInt32(buffer) != (BitConverter.IsLittleEndian ? 0x4b_43_41_50 : 0x50_41_43_4b)) // "PACK"
             {
                 throw new InvalidDataException("PACK signature mismatch");
             }
