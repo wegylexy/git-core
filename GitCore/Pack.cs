@@ -32,8 +32,12 @@ public readonly record struct UnpackedObject(ObjectType Type, long Size, ReadOnl
 
     public ReadOnlyMemory<byte> Prolog { get; internal init; } = default;
 
-    public override string ToString() =>
-        FormattableString.Invariant($"{TypeString(Type)} {Size} {Hash.ToHexString()}");
+    public override string ToString() => Type switch
+    {
+        ObjectType.ReferenceDelta => $"delta based on {Hash.ToHexString()}",
+        ObjectType.OffsetDelta => $"delta based on {Encoding.UTF8.GetString(Hash.Span)}",
+        _ => FormattableString.Invariant($"{TypeString(Type)} {Size} {Hash.ToHexString()}")
+    };
 
     public Stream AsStream() => new SequenceStream(Data);
 }
@@ -140,96 +144,98 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
                     await ReadByteAsync();
                     size |= (buffer[0] & 0b1111111L) << s;
                 }
-                if (type == ObjectType.OffsetDelta)
+                switch (type)
                 {
-                    throw new NotSupportedException("Offset delta not supported");
-                }
-                else if (type == ObjectType.ReferenceDelta)
-                {
-                    for (var read = 0; read < 20;)
-                    {
-                        var r = await _hs.ReadAsync(buffer.AsMemory(read, 20 - read), cancellationToken);
-                        if (r == 0)
+                    case ObjectType.OffsetDelta:
+                        throw new NotSupportedException("Offset delta not supported");
+                    case ObjectType.ReferenceDelta:
+                        for (var read = 0; read < 20;)
                         {
-                            throw new EndOfStreamException();
-                        }
-                        read += r;
-                    }
-                    Stack<ReadOnlyMemory<byte>> segments = new();
-                    {
-                        using ZLibStream zls = new(_hs, CompressionMode.Decompress, true);
-                        for (var read = 0; read < size;)
-                        {
-                            var b = GC.AllocateUninitializedArray<byte>((int)Math.Min(size - read, _MaxChunkSize));
-                            var r = await zls.ReadAsync(b, cancellationToken);
+                            var r = await _hs.ReadAsync(buffer.AsMemory(read, 20 - read), cancellationToken);
                             if (r == 0)
                             {
                                 throw new EndOfStreamException();
                             }
-                            segments.Push(b.AsMemory(0, r));
-                            ha.TransformBlock(b, 0, r, null, 0);
                             read += r;
                         }
-                        var i = zls.GetInputBuffer();
-                        _hs.Unread(i.Length);
-                        _ = _ss.Push(i);
-                    }
-                    var runningIndex = size;
-                    var last = segments.Pop();
-                    ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
-                    while (segments.TryPop(out var previous))
-                    {
-                        start = new(previous, start, runningIndex -= previous.Length);
-                    }
-                    yield return new(type, size, new(start, 0, end, end.Memory.Length), buffer.ToArray());
-                }
-                else
-                {
-                    ReadOnlySequence<byte> data;
-                    ReadOnlyMemory<byte> hash;
-                    var prolog = UnpackedObject.PrologBytes(type, size);
-                    ha.Initialize();
-                    ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
-                    if (size > 0)
-                    {
-                        Stack<ReadOnlyMemory<byte>> segments = new();
                         {
-                            using ZLibStream zls = new(_hs, CompressionMode.Decompress, true);
-                            for (var read = 0; read < size;)
+                            Stack<ReadOnlyMemory<byte>> segments = new();
                             {
-                                var b = GC.AllocateUninitializedArray<byte>((int)Math.Min(size - read, _MaxChunkSize));
-                                var r = await zls.ReadAsync(b, cancellationToken);
-                                if (r == 0)
+                                using ZLibStream zls = new(_hs, CompressionMode.Decompress, true);
+                                for (var read = 0; read < size;)
                                 {
-                                    throw new EndOfStreamException();
+                                    var b = GC.AllocateUninitializedArray<byte>((int)Math.Min(size - read, _MaxChunkSize));
+                                    var r = await zls.ReadAsync(b, cancellationToken);
+                                    if (r == 0)
+                                    {
+                                        throw new EndOfStreamException();
+                                    }
+                                    segments.Push(b.AsMemory(0, r));
+                                    read += r;
                                 }
-                                segments.Push(b.AsMemory(0, r));
-                                ha.TransformBlock(b, 0, r, null, 0);
-                                read += r;
+                                var i = zls.GetInputBuffer();
+                                _hs.Unread(i.Length);
+                                _ = _ss.Push(i);
                             }
-                            var i = zls.GetInputBuffer();
-                            _hs.Unread(i.Length);
-                            _ = _ss.Push(i);
+                            var runningIndex = size;
+                            var last = segments.Pop();
+                            ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
+                            while (segments.TryPop(out var previous))
+                            {
+                                start = new(previous, start, runningIndex -= previous.Length);
+                            }
+                            yield return new(type, size, new(start, 0, end, end.Memory.Length), buffer.ToArray());
                         }
-                        var runningIndex = size;
-                        var last = segments.Pop();
-                        ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
-                        while (segments.TryPop(out var previous))
+                        break;
+                    default:
                         {
-                            start = new(previous, start, runningIndex -= previous.Length);
+                            ReadOnlySequence<byte> data;
+                            ReadOnlyMemory<byte> hash;
+                            var prolog = UnpackedObject.PrologBytes(type, size);
+                            ha.Initialize();
+                            ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
+                            if (size > 0)
+                            {
+                                Stack<ReadOnlyMemory<byte>> segments = new();
+                                {
+                                    using ZLibStream zls = new(_hs, CompressionMode.Decompress, true);
+                                    for (var read = 0; read < size;)
+                                    {
+                                        var b = GC.AllocateUninitializedArray<byte>((int)Math.Min(size - read, _MaxChunkSize));
+                                        var r = await zls.ReadAsync(b, cancellationToken);
+                                        if (r == 0)
+                                        {
+                                            throw new EndOfStreamException();
+                                        }
+                                        segments.Push(b.AsMemory(0, r));
+                                        ha.TransformBlock(b, 0, r, null, 0);
+                                        read += r;
+                                    }
+                                    var i = zls.GetInputBuffer();
+                                    _hs.Unread(i.Length);
+                                    _ = _ss.Push(i);
+                                }
+                                var runningIndex = size;
+                                var last = segments.Pop();
+                                ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
+                                while (segments.TryPop(out var previous))
+                                {
+                                    start = new(previous, start, runningIndex -= previous.Length);
+                                }
+                                data = new(start, 0, end, end.Memory.Length);
+                            }
+                            else
+                            {
+                                data = ReadOnlySequence<byte>.Empty;
+                            }
+                            ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+                            hash = ha.Hash!;
+                            yield return new(type, size, data, hash)
+                            {
+                                Prolog = prolog
+                            };
                         }
-                        data = new(start, 0, end, end.Memory.Length);
-                    }
-                    else
-                    {
-                        data = ReadOnlySequence<byte>.Empty;
-                    }
-                    ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                    hash = ha.Hash!;
-                    yield return new(type, size, data, hash)
-                    {
-                        Prolog = prolog
-                    };
+                        break;
                 }
             }
         }
