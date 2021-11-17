@@ -1,4 +1,5 @@
-﻿using System.IO.Compression;
+﻿using System.Buffers;
+using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -41,13 +42,22 @@ public class Internal
     }
 
     [Fact]
-    public void Sequence()
+    public async Task SequenceAsync()
     {
         var expected = Guid.NewGuid().ToByteArray();
         SequenceStream ss = new(new(expected));
-        var actual = new byte[ss.Length];
-        ss.Read(actual);
-        Assert.Equal(expected, actual);
+        {
+            var actual = new byte[ss.Length];
+            ss.Read(actual);
+            Assert.Equal(expected, actual);
+        }
+        ss.Position = 0;
+        {
+            var s = await ss.ToSequenceAsync(4);
+            var actual = new byte[s.Length];
+            s.Slice(0).CopyTo(actual);
+            Assert.Equal(expected, actual);
+        }
     }
 
     [Fact]

@@ -17,7 +17,7 @@ public class Trees
     public async Task TreeAsync(string treeHex)
     {
         var count = 0;
-        await foreach (var e in ReadOnlyTree.EnumerateAsync(Path.Join("../../../../.git/objects", treeHex.AsSpan(0, 2), treeHex.AsSpan(2)), true))
+        await foreach (var e in AsyncTree.EnumerateAsync(Path.Join("../../../../.git/objects", treeHex.AsSpan(0, 2), treeHex.AsSpan(2)), true))
         {
             _output.WriteLine(e.ToString());
             ++count;
@@ -68,30 +68,25 @@ public class Trees
                 ArrayPool<byte>.Shared.Return(a);
             }
         }
-        ReadOnlyPack rop = new(s);
+        AsyncPack pack = new(s);
         List<UnpackedObject> os = new();
-        await foreach (var o in rop)
+        List<ReadOnlyMemory<byte>> hs = new();
+        await foreach (var o in pack)
         {
             _output.WriteLine(o.ToString());
             switch (o.Type)
             {
                 case ObjectType.Tree:
+                    await foreach (var e in o.AsTree())
                     {
-                        StackStream ss = new(o.AsStream());
-                        ss.Push(o.Prolog);
-                        await foreach (var e in new ReadOnlyTree(ss))
-                        {
-                            _output.WriteLine("\t" + e.ToString());
-                        }
+                        _output.WriteLine("\t" + e.ToString());
+                        hs.Add(e.Hash);
                     }
                     break;
                 case ObjectType.ReferenceDelta:
                     {
-                        var bo = os.First(b => b.Hash.Span.SequenceEqual(o.Hash.Span));
-                        MemoryStream ms = new();
-                        var hash = await o.DeltaAsync(bo.Type, bo.AsStream(), ms);
-                        ms.TryGetBuffer(out var a);
-                        UnpackedObject d = new(bo.Type, ms.Length, new(a.Array!, a.Offset, a.Count), hash);
+                        var d = o.Delta(os.First(b => b.Hash.Span.SequenceEqual(o.Hash.Span)));
+                        Assert.Contains(hs, h => h.Span.SequenceEqual(d.Hash.Span));
                         os.Add(d);
                         _output.WriteLine("\t" + d.ToString());
                     }

@@ -196,4 +196,34 @@ public static class ByteExtensions
         }} {stream.Length}")));
         return await ha.ComputeHashAsync(ss, cancellationToken);
     }
+
+    public static async Task<ReadOnlySequence<byte>> ToSequenceAsync(this Stream stream, int segmentSize = 4096, CancellationToken cancellationToken = default)
+    {
+        Stack<ReadOnlyMemory<byte>> segments = new();
+        long runningIndex = 0;
+        for (; ; )
+        {
+            var segment = GC.AllocateUninitializedArray<byte>(segmentSize);
+            var read = await stream.ReadAsync(segment, cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+            segments.Push(segment.AsMemory(0, read));
+            runningIndex += read;
+        }
+        if (segments.TryPop(out var last))
+        {
+            BytesSegment end = new(last, null, runningIndex -= last.Length), start = end;
+            while (segments.TryPop(out var previous))
+            {
+                start = new(previous, start, runningIndex -= previous.Length);
+            }
+            return new(start, 0, end, end.Memory.Length);
+        }
+        else
+        {
+            return ReadOnlySequence<byte>.Empty;
+        }
+    }
 }

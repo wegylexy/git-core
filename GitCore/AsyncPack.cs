@@ -17,7 +17,7 @@ public enum ObjectType
     ReferenceDelta
 }
 
-public readonly record struct UnpackedObject(ObjectType Type, long Size, ReadOnlySequence<byte> Data, ReadOnlyMemory<byte> Hash)
+public readonly record struct UnpackedObject(ObjectType Type, ReadOnlySequence<byte> Data, ReadOnlyMemory<byte> Hash)
 {
     internal static string TypeString(ObjectType type) => type switch
     {
@@ -30,41 +30,38 @@ public readonly record struct UnpackedObject(ObjectType Type, long Size, ReadOnl
 
     internal static byte[] PrologBytes(ObjectType type, long size) => Encoding.ASCII.GetBytes($"{TypeString(type)} {size}\0");
 
-    public ReadOnlyMemory<byte> Prolog { get; internal init; } = default;
-
     public override string ToString() => Type switch
     {
-        ObjectType.ReferenceDelta => $"delta {Size} based on {Hash.ToHexString()}",
-        ObjectType.OffsetDelta => $"delta {Size} based on {Encoding.UTF8.GetString(Hash.Span)}",
-        _ => FormattableString.Invariant($"{TypeString(Type)} {Size} {Hash.ToHexString()}")
+        ObjectType.OffsetDelta => $"delta {Data.Length} based on {Encoding.UTF8.GetString(Hash.Span)}",
+        ObjectType.ReferenceDelta => $"delta {Data.Length} based on {Hash.ToHexString()}",
+        _ => FormattableString.Invariant($"{TypeString(Type)} {Data.Length} {Hash.ToHexString()}")
     };
 
     public Stream AsStream()
     {
-        if (Type is ObjectType.OffsetDelta or ObjectType.ReferenceDelta)
+        if (Type != ObjectType.Blob)
         {
-            throw new InvalidOperationException("Delta");
+            throw new InvalidOperationException("Object is not blob");
         }
         return new SequenceStream(Data);
     }
 
-    /// <summary>
-    /// Derives from base stream by applying delta.
-    /// </summary>
-    /// <param name="baseStream">Seekable base stream.</param>
-    /// <param name="derivedStream">Derived output stream.</param>
-    /// <param name="hashAlgorithm">Hash algorithm.</param>
-    /// <param name="preferredBufferSize">Preferred buffer size for copy instructions.</param>
-    /// <param name="cancellationToken">Token to cancel async instructions.</param>
-    /// <returns>Hash of derived data.</returns>
-    /// <exception cref="InvalidOperationException">Delta not applicable.</exception>
-    /// <exception cref="InvalidDataException">Invalid delta.</exception>
-    public async Task<ReadOnlyMemory<byte>> DeltaAsync(ObjectType type, Stream baseStream, Stream derivedStream, string hashAlgorithm = nameof(SHA1), int preferredBufferSize = 4096, CancellationToken cancellationToken = default)
+    public AsyncTree AsTree(string hashAlgorithm = nameof(SHA1))
+    {
+        if (Type != ObjectType.Tree)
+        {
+            throw new InvalidOperationException("Object is not tree");
+        }
+        return new(Data.Length, new SequenceStream(Data), hashAlgorithm);
+    }
+
+    public UnpackedObject Delta(UnpackedObject baseObject, string hashAlgorithm = nameof(SHA1), int preferredBufferSize = 4096)
     {
         if (Type is not (ObjectType.OffsetDelta or ObjectType.ReferenceDelta))
         {
-            throw new InvalidOperationException("Not delta");
+            throw new InvalidOperationException("Object is not delta");
         }
+        Stack<ReadOnlyMemory<byte>> segments = new();
         long i = 0L, baseSize = 0L, derivedSize = 0L, written = 0L;
         for (var s = 0; ; s += 7)
         {
@@ -75,7 +72,7 @@ public readonly record struct UnpackedObject(ObjectType Type, long Size, ReadOnl
                 break;
             }
         }
-        if (baseStream.Length != baseSize)
+        if (baseObject.Data.Length != baseSize)
         {
             throw new InvalidOperationException("Base stream size mismatch");
         }
@@ -88,66 +85,79 @@ public readonly record struct UnpackedObject(ObjectType Type, long Size, ReadOnl
                 break;
             }
         }
-        using HashStream hs = new(derivedStream, hashAlgorithm, PrologBytes(type, derivedSize), true);
-        while (i < Size)
+        using var ha = HashAlgorithm.Create(hashAlgorithm)!;
+        var prolog = PrologBytes(baseObject.Type, derivedSize);
+        ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
         {
-            var b = Data.Slice(i++, 1).FirstSpan[0];
-            if ((b & 0b10000000) == 0)
+            byte[]? buffer = null;
+            try
             {
-                var length = b & 0b01111111L;
-                if (length == 0)
+                while (i < Data.Length)
                 {
-                    throw new InvalidDataException("Invalid delta instruction");
-                }
-                await Data.Slice(i, length).CopyToAsync(hs, cancellationToken);
-                i += length;
-                written += length;
-            }
-            else
-            {
-                var offset = 0;
-                if ((b & 0b00000001) == 0b00000001)
-                {
-                    offset |= Data.Slice(i++, 1).FirstSpan[0];
-                }
-                if ((b & 0b00000010) == 0b00000010)
-                {
-                    offset |= Data.Slice(i++, 1).FirstSpan[0] << 8;
-                }
-                if ((b & 0b00000100) == 0b00000100)
-                {
-                    offset |= Data.Slice(i++, 1).FirstSpan[0] << 16;
-                }
-                if ((b & 0b00001000) == 0b00001000)
-                {
-                    offset |= Data.Slice(i++, 1).FirstSpan[0] << 24;
-                }
-                baseStream.Seek(offset, SeekOrigin.Begin);
-                var size = 0;
-                if ((b & 0b00010000) == 0b00010000)
-                {
-                    size |= Data.Slice(i++, 1).FirstSpan[0];
-                }
-                if ((b & 0b00100000) == 0b00100000)
-                {
-                    size |= Data.Slice(i++, 1).FirstSpan[0] << 8;
-                }
-                if ((b & 0b01000000) == 0b01000000)
-                {
-                    size |= Data.Slice(i++, 1).FirstSpan[0] << 16;
-                }
-                var buffer = ArrayPool<byte>.Shared.Rent(Math.Min(preferredBufferSize, size));
-                try
-                {
-                    while (size > 0)
+                    var b = Data.Slice(i++, 1).FirstSpan[0];
+                    ReadOnlySequence<byte> source;
+                    if ((b & 0b10000000) == 0)
                     {
-                        var r = await baseStream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, size)), cancellationToken);
-                        await hs.WriteAsync(buffer.AsMemory(0, r), cancellationToken);
-                        size -= r;
-                        written += r;
+                        var length = b & 0b01111111L;
+                        if (length == 0)
+                        {
+                            throw new InvalidDataException("Invalid delta instruction");
+                        }
+                        source = Data.Slice(i, length);
+                        i += length;
                     }
+                    else
+                    {
+                        var offset = 0;
+                        if ((b & 0b00000001) == 0b00000001)
+                        {
+                            offset |= Data.Slice(i++, 1).FirstSpan[0];
+                        }
+                        if ((b & 0b00000010) == 0b00000010)
+                        {
+                            offset |= Data.Slice(i++, 1).FirstSpan[0] << 8;
+                        }
+                        if ((b & 0b00000100) == 0b00000100)
+                        {
+                            offset |= Data.Slice(i++, 1).FirstSpan[0] << 16;
+                        }
+                        if ((b & 0b00001000) == 0b00001000)
+                        {
+                            offset |= Data.Slice(i++, 1).FirstSpan[0] << 24;
+                        }
+                        var size = 0;
+                        if ((b & 0b00010000) == 0b00010000)
+                        {
+                            size |= Data.Slice(i++, 1).FirstSpan[0];
+                        }
+                        if ((b & 0b00100000) == 0b00100000)
+                        {
+                            size |= Data.Slice(i++, 1).FirstSpan[0] << 8;
+                        }
+                        if ((b & 0b01000000) == 0b01000000)
+                        {
+                            size |= Data.Slice(i++, 1).FirstSpan[0] << 16;
+                        }
+                        source = baseObject.Data.Slice(offset, size);
+                    }
+                    foreach (var s in source)
+                    {
+                        segments.Push(s);
+                        buffer ??= ArrayPool<byte>.Shared.Rent(preferredBufferSize);
+                        for (var offset = 0; offset < s.Length;)
+                        {
+                            var m = s[offset..Math.Min(offset + buffer.Length, s.Length)];
+                            m.CopyTo(buffer);
+                            ha.TransformBlock(buffer, 0, m.Length, null, 0);
+                            offset += m.Length;
+                        }
+                    }
+                    written += source.Length;
                 }
-                finally
+            }
+            finally
+            {
+                if (buffer != null)
                 {
                     ArrayPool<byte>.Shared.Return(buffer);
                 }
@@ -157,23 +167,28 @@ public readonly record struct UnpackedObject(ObjectType Type, long Size, ReadOnl
         {
             throw new InvalidDataException("Invalid delta");
         }
-        hs.ComputeHash();
-        return hs.Hash;
+        ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+        ReadOnlySequence<byte> data;
+        if (segments.TryPop(out var last))
+        {
+            var runningIndex = written;
+            BytesSegment end = new(last, null, runningIndex -= last.Length), start = end;
+            while (segments.TryPop(out var previous))
+            {
+                start = new(previous, start, runningIndex -= previous.Length);
+            }
+            data = new(start, 0, end, end.Memory.Length);
+        }
+        else
+        {
+            data = ReadOnlySequence<byte>.Empty;
+        }
+        return new(baseObject.Type, data, ha.Hash);
     }
 }
 
-public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
+public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
 {
-    private sealed class ObjectSegment : ReadOnlySequenceSegment<byte>
-    {
-        public ObjectSegment(ReadOnlyMemory<byte> memory, ReadOnlySequenceSegment<byte>? next, long runningIndex)
-        {
-            Memory = memory;
-            Next = next;
-            RunningIndex = runningIndex;
-        }
-    }
-
     private readonly StackStream _ss;
 
     private readonly string _hash;
@@ -196,7 +211,7 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
 
     private long _entries = -1;
 
-    public ReadOnlyPack(Stream stream, string hashAlgorithm = nameof(SHA1))
+    public AsyncPack(Stream stream, string hashAlgorithm = nameof(SHA1))
     {
         _ss = stream is StackStream ss ? ss : new(stream, true);
         _hs = new(_ss, _hash = hashAlgorithm, null, true);
@@ -299,12 +314,12 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
                             }
                             var runningIndex = size;
                             var last = segments.Pop();
-                            ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
+                            BytesSegment end = new(last, null, runningIndex -= last.Length), start = end;
                             while (segments.TryPop(out var previous))
                             {
                                 start = new(previous, start, runningIndex -= previous.Length);
                             }
-                            yield return new(type, size, new(start, 0, end, end.Memory.Length), buffer.ToArray());
+                            yield return new(type, new(start, 0, end, end.Memory.Length), buffer.ToArray());
                         }
                         break;
                     default:
@@ -337,7 +352,7 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
                                 }
                                 var runningIndex = size;
                                 var last = segments.Pop();
-                                ObjectSegment end = new(last, null, runningIndex -= last.Length), start = end;
+                                BytesSegment end = new(last, null, runningIndex -= last.Length), start = end;
                                 while (segments.TryPop(out var previous))
                                 {
                                     start = new(previous, start, runningIndex -= previous.Length);
@@ -350,10 +365,7 @@ public sealed class ReadOnlyPack : IAsyncEnumerable<UnpackedObject>
                             }
                             ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
                             hash = ha.Hash!;
-                            yield return new(type, size, data, hash)
-                            {
-                                Prolog = prolog
-                            };
+                            yield return new(type, data, hash);
                         }
                         break;
                 }

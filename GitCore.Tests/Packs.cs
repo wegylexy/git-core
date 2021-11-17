@@ -53,14 +53,13 @@ public class Packs
             ms.Write(hs.Hash.Span);
             ms.Position = 0;
         }
-        ReadOnlyPack rop = new(ms, hashAlgorithm);
+        AsyncPack rop = new(ms, hashAlgorithm);
         Assert.Equal(objects.Count, await rop.CountAsync());
         {
             var i = 0;
             await foreach (var u in rop)
             {
                 var o = objects[i];
-                Assert.Equal(o.Data.Length, u.Size);
                 Assert.True(u.Hash.Span.SequenceEqual(o.Hash));
                 Assert.Equal(o.Data, u.Data.ToArray());
                 ++i;

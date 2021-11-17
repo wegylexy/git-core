@@ -31,7 +31,7 @@ public sealed class UploadPackRequest : HttpContent
             using var e = _want.GetEnumerator();
             e.MoveNext();
             length = 10 + e.Current.Length * 2;
-            a = GC.AllocateUninitializedArray<byte>(Math.Max(13, length));
+            a = GC.AllocateUninitializedArray<byte>(Math.Max(9, length));
             Encoding.ASCII.GetBytes(length.ToString("x4"), a.AsSpan(0, 4));
             a[4] = 0x77; // 'w'
             a[5] = 0x61; // 'a'
@@ -47,6 +47,8 @@ public sealed class UploadPackRequest : HttpContent
             }
             while (e.MoveNext());
         }
+        a[15] = a[14] = a[13] = a[12] = 0x30; // "0000";
+        await stream.WriteAsync(a.AsMemory(12, 4));
         if (_have is not null)
         {
             a[4] = 0x68; // 'h'
@@ -58,14 +60,14 @@ public sealed class UploadPackRequest : HttpContent
                 await stream.WriteAsync(buffer);
             }
         }
-        a[6] = a[5] = a[4] = a[3] = a[2] = 0x30; // "00000"
-        a[7] = 0x39; // '9'
-        a[8] = 0x64; // 'd'
-        a[9] = 0x6f; // 'o'
-        a[10] = 0x6e; // 'n'
-        a[11] = 0x65; // 'e'
-        a[12] = 10; // '\n'
-        await stream.WriteAsync(a.AsMemory(0, 13));
+        a[2] = 0x30; // '0'
+        a[3] = 0x39; // '9'
+        a[4] = 0x64; // 'd'
+        a[5] = 0x6f; // 'o'
+        a[6] = 0x6e; // 'n'
+        a[7] = 0x65; // 'e'
+        a[8] = 10; // '\n'
+        await stream.WriteAsync(a.AsMemory(0, 9));
         await stream.FlushAsync();
     }
 
