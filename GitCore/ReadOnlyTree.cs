@@ -24,13 +24,13 @@ public readonly record struct TreeEntry(int Mode, string Path, ReadOnlyMemory<by
         $"{Convert.ToString(Mode, 8).PadLeft(6, '0')} {(Type.HasFlag(TreeEntryType.Tree) ? "tree" : "blob")} {Hash.ToHexString()}\t{Path}";
 }
 
-public sealed class Tree : IAsyncEnumerable<TreeEntry>
+public sealed class ReadOnlyTree : IAsyncEnumerable<TreeEntry>
 {
     public static async IAsyncEnumerable<TreeEntry> EnumerateAsync(string path, bool recusrive = false)
     {
         using var file = File.OpenRead(path);
         using ZLibStream zls = new(file, CompressionMode.Decompress);
-        Tree tree = new(zls, nameof(SHA1));
+        ReadOnlyTree tree = new(zls, nameof(SHA1));
         await foreach (var e in tree)
         {
             if (recusrive && e.Type == TreeEntryType.Tree)
@@ -55,7 +55,7 @@ public sealed class Tree : IAsyncEnumerable<TreeEntry>
 
     private readonly int _hashSize;
 
-    public Tree(Stream stream, string hashAlgorithm = nameof(SHA1))
+    public ReadOnlyTree(Stream stream, string hashAlgorithm = nameof(SHA1))
     {
         _stream = stream is StackStream ss ? ss : new(stream, true);
         using var ha = HashAlgorithm.Create(hashAlgorithm)!;

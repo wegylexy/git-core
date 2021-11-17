@@ -17,7 +17,7 @@ public class Trees
     public async Task TreeAsync(string treeHex)
     {
         var count = 0;
-        await foreach (var e in Tree.EnumerateAsync(Path.Join("../../../../.git/objects", treeHex.AsSpan(0, 2), treeHex.AsSpan(2)), true))
+        await foreach (var e in ReadOnlyTree.EnumerateAsync(Path.Join("../../../../.git/objects", treeHex.AsSpan(0, 2), treeHex.AsSpan(2)), true))
         {
             _output.WriteLine(e.ToString());
             ++count;
@@ -69,6 +69,7 @@ public class Trees
             }
         }
         ReadOnlyPack rop = new(s);
+        List<UnpackedObject> os = new();
         await foreach (var o in rop)
         {
             _output.WriteLine(o.ToString());
@@ -78,12 +79,28 @@ public class Trees
                     {
                         StackStream ss = new(o.AsStream());
                         ss.Push(o.Prolog);
-                        await foreach (var e in new Tree(ss))
+                        await foreach (var e in new ReadOnlyTree(ss))
                         {
                             _output.WriteLine("\t" + e.ToString());
                         }
                     }
                     break;
+                case ObjectType.ReferenceDelta:
+                    {
+                        var bo = os.First(b => b.Hash.Span.SequenceEqual(o.Hash.Span));
+                        MemoryStream ms = new();
+                        var hash = await o.DeltaAsync(bo.Type, bo.AsStream(), ms);
+                        ms.TryGetBuffer(out var a);
+                        UnpackedObject d = new(bo.Type, ms.Length, new(a.Array!, a.Offset, a.Count), hash);
+                        os.Add(d);
+                        _output.WriteLine("\t" + d.ToString());
+                    }
+                    break;
+                case ObjectType.Blob:
+                    os.Add(o);
+                    break;
+                default:
+                    throw new NotSupportedException("Unexpected type");
             }
         }
     }

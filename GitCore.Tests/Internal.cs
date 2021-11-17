@@ -22,14 +22,14 @@ public class Internal
         }
         {
             using MemoryStream ms = new();
-            using HashStream hs = new(ms, hashAlgorithm, true);
+            using HashStream hs = new(ms, hashAlgorithm, null, true);
             hs.Write(raw);
             hs.ComputeHash();
             Assert.Equal(expected, hs.Hash.ToArray());
         }
         {
             using MemoryStream ms = new(raw);
-            using HashStream hs = new(ms, hashAlgorithm, true);
+            using HashStream hs = new(ms, hashAlgorithm, null, true);
             var buffer = GC.AllocateUninitializedArray<byte>(raw.Length);
             hs.Read(buffer);
             hs.Unread(4);

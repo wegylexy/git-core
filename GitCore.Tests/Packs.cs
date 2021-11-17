@@ -31,7 +31,7 @@ public class Packs
         objects.Sort((a, b) =>
             a.Hash == b.Hash ? 0 : a.Hash.AsSpan().SequenceCompareTo(b.Hash));
         using MemoryStream ms = new();
-        using HashStream hs = new(ms, hashAlgorithm, true);
+        using HashStream hs = new(ms, hashAlgorithm, null, true);
         {
             {
                 var buffer = GC.AllocateUninitializedArray<byte>(12);
