@@ -105,8 +105,8 @@ public class Https
             _output.WriteLine($"unshallow {h.ToHexString()}");
         }
         _output.WriteLine($"PACK: {await r.Pack.CountAsync()} objects");
-        List<UnpackedObject> os = new();
-        List<ReadOnlyMemory<byte>> ts = new(), hs = new();
+        Dictionary<ReadOnlyMemory<byte>, UnpackedObject> os = new(ByteROMEqualityComparer.Instance);
+        HashSet<ReadOnlyMemory<byte>> ts = new(ByteROMEqualityComparer.Instance), hs = new(ByteROMEqualityComparer.Instance);
         await foreach (var o in r.Pack)
         {
             var co = o;
@@ -120,13 +120,15 @@ public class Https
             {
                 _output.WriteLine("\t" + co.ToString());
             }
+            if (!co.IsDelta)
+            {
+                os.Add(co.Hash, co);
+            }
             switch (co.Type)
             {
                 case ObjectType.Blob:
-                    os.Add(co);
                     break;
                 case ObjectType.Tree:
-                    os.Add(co);
                     ts.Add(co.Hash);
                     await foreach (var e in co.AsTree())
                     {
@@ -135,28 +137,23 @@ public class Https
                     }
                     break;
                 case ObjectType.ReferenceDelta:
+                    if (os.TryGetValue(co.Hash, out var b))
                     {
-                        var b = os.FirstOrDefault(b => b.Hash.Span.SequenceEqual(co.Hash.Span));
-                        if (b.Type == default)
-                        {
-                            _output.WriteLine("\t(reference not found)");
-                        }
-                        else
-                        {
-                            co = co.Delta(b);
-                            _output.WriteLine(hs.Any(h => h.Span.SequenceEqual(co.Hash.Span)) ? "\t(seen above)" : "\t(unseen above)");
-                            os.Add(co);
-                            goto Triage;
-                        }
+                        co = co.Delta(b);
+                        _output.WriteLine(hs.Contains(co.Hash) ? "\t(seen above)" : "\t(unseen above)");
+                        goto Triage;
+                    }
+                    else
+                    {
+                        _output.WriteLine("\t(not in pack)");
                     }
                     break;
                 case ObjectType.Commit:
-                    os.Add(co);
                     break;
                 default:
                     throw new NotSupportedException("Unexpected type");
             }
         }
-        Assert.Contains(os, o => o.Hash.Span.SequenceEqual(leaf.Span)); // may fail due to external reference
+        Assert.Contains(leaf, (IDictionary<ReadOnlyMemory<byte>, UnpackedObject>)os); // may fail due to external reference
     }
 }

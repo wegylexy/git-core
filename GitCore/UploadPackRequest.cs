@@ -26,6 +26,7 @@ public sealed class UploadPackRequest : HttpContent
         Have = have;
         Capabilities = capabilities ?? new HashSet<string>
         {
+            "multi_ack",
             "thin-pack"
         };
         Headers.ContentType = new("application/x-git-upload-pack-request");

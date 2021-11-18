@@ -22,7 +22,10 @@ public sealed class UploadPackResponse : IDisposable
             throw new InvalidOperationException("Unexpected media type");
         }
         StackStream ss = new(await response.Content.ReadAsStreamAsync(cancellationToken), true);
-        HashSet<ReadOnlyMemory<byte>> acknowledged = new(), shallow = new(), unshallow = new();
+        HashSet<ReadOnlyMemory<byte>>
+            acknowledged = new(ByteROMEqualityComparer.Instance),
+            shallow = new(ByteROMEqualityComparer.Instance),
+            unshallow = new(ByteROMEqualityComparer.Instance);
         var buffer = ArrayPool<byte>.Shared.Rent(9 + hashSize * 2);
         try
         {
@@ -74,7 +77,7 @@ public sealed class UploadPackResponse : IDisposable
                             }
                             if (buffer[0] == 0x41 && buffer[1] == 0x43) // "ACK"
                             {
-                                if (size != 5 + hashSize * 2 || buffer[3] != 0x20)
+                                if (size < 5 + hashSize * 2 || buffer[3] != 0x20)
                                 {
                                     throw new InvalidDataException("Invalid ACK");
                                 }
