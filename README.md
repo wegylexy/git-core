@@ -6,18 +6,43 @@ A client app can request with a commit or tree hash for a pack of wanted blobs a
 
 This project begins with retrieving a Git pack using only efficient .NET 6.0 APIs. Further contribution is welcome.
 
-## Example
+## Example: discovery of references
 
-Git Remote capable of `allow-reachable-sha1-in-want` and `object-format=sha1`:
+```cs
+using FlyByWireless.GitCore;
+
+using HttpClient client = new()
+{
+    BaseAddress = new("https://github.com/wegylexy/git-core.git/")
+};
+var upa = client.GetUploadPackAsync();
+await foreach (var p in upa)
+{
+    var r = p.Key;
+    if (r.StartsWith("refs/heads/"))
+    {
+        r = string.Concat("branch ", r.AsSpan(11));
+    }
+    else if (r.StartsWith("refs/tags/"))
+    {
+        r = string.Concat("tag ", r.AsSpan(10));
+    }
+    Console.WriteLine($"{r} -> commit {p.Value.ToHexString()}");
+}
+```
+
+## Example: shallow-fetch of a tree
+
+Git remote capable of `allow-reachable-sha1-in-want`, `shallow`, and `object-format=sha1`:
 - `https://github.com/wegylexy/git-core.git/`  
   (trailing `/` is required)
 
-Wanted Tree:
-- `d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d`
+Wanted objects:
+- `tree d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d`
 
-Local Existing Blobs:
-- `1ff0c423042b46cb1d617b81efb715defbe8054d`
-- `9491a2fda28342ab358eaf234e1afe0c07a53d62`
+Local existing objects:
+- `blob 1ff0c423042b46cb1d617b81efb715defbe8054d`
+- `blob 9491a2fda28342ab358eaf234e1afe0c07a53d62`
 
 ```cs
 using FlyByWireless.GitCore;
@@ -27,16 +52,20 @@ using HttpClient client = new()
     BaseAddress = new("https://github.com/wegylexy/git-core.git/")
 };
 using var response = await client.PostUploadPackAsync(new(
-    new ReadOnlyMemory<byte>[] { "d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d".ParseHex() },
-    new ReadOnlyMemory<byte>[]
+    want: new ReadOnlyMemory<byte>[]
+    {
+        "d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d".ParseHex()
+    },
+    depth: 1,
+    have: new ReadOnlyMemory<byte>[]
     {
         "1ff0c423042b46cb1d617b81efb715defbe8054d".ParseHex(),
         "9491a2fda28342ab358eaf234e1afe0c07a53d62".ParseHex()
     }
 ));
-await foreach (var uo in response.Pack)
+await foreach (var uo in response.Pack) // for each unpacked object
 {
-    var co = uo;
+    var co = uo; // delta will re-assign current object
 Triage:
     switch (uo.Type)
     {

@@ -49,14 +49,15 @@ public static class HttpExtensions
 
 public static class ByteExtensions
 {
+    internal static int ToHex(this int c) => c + (c < 10 ? '0' : 'a' - 10);
+
     public static string ToHexString(this in ReadOnlySpan<byte> span)
     {
-        static char C(int c) => (char)(c + (c < 10 ? '0' : 'a' - 10));
         Span<char> cs = stackalloc char[span.Length * 2];
         for (var i = 0; i < span.Length; ++i)
         {
-            cs[i * 2] = C(span[i] >> 4);
-            cs[i * 2 + 1] = C(span[i] & 0xF);
+            cs[i * 2] = (char)ToHex(span[i] >> 4);
+            cs[i * 2 + 1] = (char)ToHex(span[i] & 0xF);
         }
         return new(cs);
     }
@@ -69,11 +70,10 @@ public static class ByteExtensions
 
     public static void ToHexASCII(this in ReadOnlySpan<byte> span, Span<byte> ascii)
     {
-        static byte A(int c) => (byte)(c + (c < 10 ? '0' : 'a' - 10));
         for (var i = 0; i < span.Length; ++i)
         {
-            ascii[i * 2] = A(span[i] >> 4);
-            ascii[i * 2 + 1] = A(span[i] & 0xF);
+            ascii[i * 2] = (byte)ToHex(span[i] >> 4);
+            ascii[i * 2 + 1] = (byte)ToHex(span[i] & 0xF);
         }
     }
 
@@ -96,14 +96,15 @@ public static class ByteExtensions
     public static byte[] ToHexASCII(this in ReadOnlyMemory<byte> memory) =>
         memory.Span.ToHexASCII();
 
+    internal static int ParseHex(this int ascii) => ascii - (ascii >= 'a' ? 'a' - 10 : ascii >= 'A' ? 'A' - 10 : '0') is < 0x10 and var c ? c :
+        throw new ArgumentOutOfRangeException(nameof(ascii));
+
     public static void ParseHex(this in ReadOnlySpan<char> hex, Span<byte> bytes)
     {
-        static int C(char a) => a - (a >= 'a' ? 'a' - 10 : a >= 'A' ? 'A' - 10 : '0') is < 0x10 and var c ? c :
-            throw new ArgumentOutOfRangeException(nameof(hex));
         var length = hex.Length / 2;
         for (var i = 0; i < length; ++i)
         {
-            bytes[i] = (byte)((C(hex[i * 2]) << 4) | C(hex[i * 2 + 1]));
+            bytes[i] = (byte)((ParseHex(hex[i * 2]) << 4) | ParseHex(hex[i * 2 + 1]));
         }
     }
 
@@ -125,9 +126,6 @@ public static class ByteExtensions
 
     public static byte[] ParseHex(this string hex) =>
         ((ReadOnlySpan<char>)hex).ParseHex();
-
-    public static int ParseHex(this byte ascii) => ascii - (ascii >= 'a' ? 'a' - 10 : ascii >= 'A' ? 'A' - 10 : '0') is < 0x10 and var c ? c :
-        throw new ArgumentOutOfRangeException(nameof(ascii));
 
     public static void ParseHex(this in ReadOnlySpan<byte> hex, Span<byte> bytes)
     {

@@ -22,7 +22,8 @@ public sealed class UploadPackResponse : IDisposable
             throw new InvalidOperationException("Unexpected media type");
         }
         StackStream ss = new(await response.Content.ReadAsStreamAsync(cancellationToken), true);
-        var buffer = ArrayPool<byte>.Shared.Rent(5 + hashSize * 2);
+        HashSet<ReadOnlyMemory<byte>> acknowledged = new(), shallow = new(), unshallow = new();
+        var buffer = ArrayPool<byte>.Shared.Rent(9 + hashSize * 2);
         try
         {
             for (var PACK = BitConverter.IsLittleEndian ? 0x4b_43_41_50 : 0x50_41_43_4b; ;)
@@ -41,7 +42,11 @@ public sealed class UploadPackResponse : IDisposable
                     ss.Push(buffer.AsMemory(0, 4));
                     break;
                 }
-                var size = (buffer[0].ParseHex() << 12) | (buffer[1].ParseHex() << 8) | (buffer[2].ParseHex() << 4) | buffer[3].ParseHex();
+                var size =
+                    (((int)buffer[0]).ParseHex() << 12) |
+                    (((int)buffer[1]).ParseHex() << 8) |
+                    (((int)buffer[2]).ParseHex() << 4) |
+                    ((int)buffer[3]).ParseHex();
                 if (size > 4)
                 {
                     size -= 4;
@@ -59,23 +64,32 @@ public sealed class UploadPackResponse : IDisposable
                         }
                         read += r;
                     }
-                    --size;
-                    if (size < 3 || buffer[size] != 10)
+                    if (size > 2)
                     {
-                        throw new InvalidDataException("Invalid upload pack response");
-                    }
-                    if (buffer[2] == 0x4b)
-                    {
-                        if (size == 3 && buffer[0] == 0x4e && buffer[1] == 0x41) // "NAK"
+                        if (buffer[2] == 0x4b && buffer[size - 1] == 10)
                         {
-                            break;
-                        }
-                        if (buffer[0] == 0x41 && buffer[1] == 0x43) // "ACK"
-                        {
-                            if (size != 4 + hashSize * 2 || buffer[3] != 0x20)
+                            if (size == 4 && buffer[0] == 0x4e && buffer[1] == 0x41) // "NAK"
                             {
-                                throw new InvalidDataException("Invalid ACK");
+                                break;
                             }
+                            if (buffer[0] == 0x41 && buffer[1] == 0x43) // "ACK"
+                            {
+                                if (size != 5 + hashSize * 2 || buffer[3] != 0x20)
+                                {
+                                    throw new InvalidDataException("Invalid ACK");
+                                }
+                                acknowledged.Add(((ReadOnlySpan<byte>)buffer.AsSpan(4, hashSize * 2)).ParseHex());
+                                continue;
+                            }
+                        }
+                        else if (size == 8 + hashSize * 2 && buffer[7] == 0x20 && buffer[0] == 0x73 && buffer[1] == 0x68 && buffer[2] == 0x61 && buffer[3] == 0x6c && buffer[4] == 0x6c && buffer[5] == 0x6f && buffer[6] == 0x77) // "shallow "
+                        {
+                            shallow.Add(((ReadOnlySpan<byte>)buffer.AsSpan(8, hashSize * 2)).ParseHex());
+                            continue;
+                        }
+                        else if (size == 10 + hashSize * 2 && buffer[9] == 0x20 && buffer[0] == 0x75 && buffer[1] == 0x6e && buffer[2] == 0x73 && buffer[3] == 0x68 && buffer[4] == 0x61 && buffer[5] == 0x6c && buffer[6] == 0x6c && buffer[7] == 0x6f && buffer[8] == 0x77) // "unshallow "
+                        {
+                            unshallow.Add(((ReadOnlySpan<byte>)buffer.AsSpan(10, hashSize * 2)).ParseHex());
                             continue;
                         }
                     }
@@ -91,19 +105,33 @@ public sealed class UploadPackResponse : IDisposable
         {
             ArrayPool<byte>.Shared.Return(buffer);
         }
-        return new(response, ss, hashAlgorithm);
+        return new(response, ss,
+            acknowledged.Count > 0 ? acknowledged : Array.Empty<ReadOnlyMemory<byte>>(),
+            shallow.Count > 0 ? shallow : Array.Empty<ReadOnlyMemory<byte>>(),
+            unshallow.Count > 0 ? unshallow : Array.Empty<ReadOnlyMemory<byte>>(),
+            hashAlgorithm
+        );
     }
 
     private readonly HttpResponseMessage _response;
 
     private readonly Stream _stream;
 
+    public IEnumerable<ReadOnlyMemory<byte>> Acknowledged { get; }
+
+    public IEnumerable<ReadOnlyMemory<byte>> Shallow { get; }
+
+    public IEnumerable<ReadOnlyMemory<byte>> Unshallow { get; }
+
     public AsyncPack Pack { get; }
 
-    private UploadPackResponse(HttpResponseMessage response, Stream stream, string hashAlgorithm = nameof(SHA1))
+    private UploadPackResponse(HttpResponseMessage response, Stream stream, IEnumerable<ReadOnlyMemory<byte>> acknowledged, IEnumerable<ReadOnlyMemory<byte>> shallow, IEnumerable<ReadOnlyMemory<byte>> unshallow, string hashAlgorithm = nameof(SHA1))
     {
         _response = response;
         _stream = stream;
+        Acknowledged = acknowledged;
+        Shallow = shallow;
+        Unshallow = unshallow;
         Pack = new(_stream, hashAlgorithm);
     }
 

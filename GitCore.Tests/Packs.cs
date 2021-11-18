@@ -85,16 +85,31 @@ public class Packs
             var ids = Enumerable.Range(0, i).Select(_ => ha.ComputeHash(Guid.NewGuid().ToByteArray())).ToList();
             using UploadPackRequest upr = new(ids.Select(id => (ReadOnlyMemory<byte>)id).ToArray());
             Assert.Equal("application/x-git-upload-pack-request", upr.Headers.ContentType!.MediaType);
+            Assert.Contains(upr.Capabilities, c => c == "thin-pack");
             StringBuilder sb = new(ids.Count * (10 + ha.HashSize / 4) + 13);
-            var prefix = $"{10 + ha.HashSize / 4:x4}want ";
-            foreach (var id in ids)
+            var e = ids.GetEnumerator();
+            Assert.True(e.MoveNext());
             {
+                var l = upr.Capabilities.Sum(c => 1 + c.Length);
+                var prefix = $"{10 + ha.HashSize / 4 + l:x4}want ";
                 sb.Append(prefix);
-                sb.Append(id.ToHexString());
+                sb.Append(e.Current.ToHexString());
+                foreach (var c in upr.Capabilities)
+                {
+                    sb.Append(' ');
+                    sb.Append(c);
+                }
+                sb.Append('\n');
+            }
+            while (e.MoveNext())
+            {
+                var prefix = $"{10 + ha.HashSize / 4:x4}want ";
+                sb.Append(prefix);
+                sb.Append(e.Current.ToHexString());
                 sb.Append('\n');
             }
             sb.Append("00000009done\n");
-            Assert.Equal(sb.ToString(), await upr.ReadAsStringAsync());
+            Assert.Equal(sb.ToString(), (await upr.ReadAsStringAsync()));
         }
     }
 }
