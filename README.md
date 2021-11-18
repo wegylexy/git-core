@@ -8,7 +8,7 @@ This project begins with retrieving a Git pack using only efficient .NET 6.0 API
 
 ## Example
 
-Git Remote:
+Git Remote capable of `allow-reachable-sha1-in-want` and `object-format=sha1`:
 - `https://github.com/wegylexy/git-core.git/`  
   (trailing `/` is required)
 
