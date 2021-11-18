@@ -4,11 +4,16 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace FlyByWireless.GitCore.Tests;
 
-public class Packs
+public class Objects
 {
+    private readonly ITestOutputHelper _output;
+
+    public Objects(ITestOutputHelper output) => _output = output;
+
     [Theory]
     [InlineData(nameof(SHA1))]
     [InlineData(nameof(SHA256))]
@@ -67,49 +72,59 @@ public class Packs
         }
     }
 
-    [Fact]
-    public async Task UploadPackRequestEmptyAsync()
+    [Theory]
+    [InlineData("f0d3a70ceaa69fb70811f58254dc738e0f939eac")]
+    [InlineData("d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d")]
+    public async Task TreeAsync(string hex)
     {
-        using UploadPackRequest upr = new();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => upr.LoadIntoBufferAsync());
+        var count = 0;
+        await foreach (var e in AsyncTree.EnumerateAsync(Path.Join("../../../../.git/objects", hex.AsSpan(0, 2), hex.AsSpan(2)), true))
+        {
+            _output.WriteLine(e.ToString());
+            ++count;
+            if (hex == "f0d3a70ceaa69fb70811f58254dc738e0f939eac")
+            {
+                switch (e.Path)
+                {
+                    case ".gitattributes":
+                        Assert.Equal("1ff0c423042b46cb1d617b81efb715defbe8054d", e.Hash.ToHexString());
+                        break;
+                    case ".gitignore":
+                        Assert.Equal("9491a2fda28342ab358eaf234e1afe0c07a53d62", e.Hash.ToHexString());
+                        break;
+                }
+            }
+        }
+        Assert.True(count > 1);
+    }
+
+    [Fact]
+    public void Commit()
+    {
+        User user = new("Alice Bob", "bob.alice@example.com");
+        CommitContent expected = new(new byte[] { 2 },
+            user, new DateTimeOffset(2020, 9, 12, 16, 0, 0, new(8, 0, 0)),
+            user, new DateTimeOffset(2020, 9, 12, 8, 0, 0, default),
+            "Hello, world!\nHow are you?"
+        )
+        {
+            Parent = new byte[] { 1 }
+        };
+        var s = expected.ToString();
+        Assert.DoesNotContain('\r', s);
+        CommitContent actual = new(new(Encoding.UTF8.GetBytes(s)));
+        Assert.Equal(expected, actual);
+        Assert.Equal(s, actual.ToString());
     }
 
     [Theory]
-    [InlineData(nameof(SHA1))]
-    [InlineData(nameof(SHA256))]
-    public async Task UploadPackRequestWantAsync(string hashAlgorithm)
+    [InlineData("4143d259f0e175c2d7a0bec79b5c0dbf4262e284", "f0d3a70ceaa69fb70811f58254dc738e0f939eac", "", "Add .gitattributes and .gitIgnore.\n")]
+    [InlineData("1eca966549be4680a7a33a8027cedd28479d4c97", "d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d", "4143d259f0e175c2d7a0bec79b5c0dbf4262e284", "Add project files.\n")]
+    public async Task CommitAsync(string commit, string tree, string parent, string message, CancellationToken cancellationToken = default)
     {
-        using var ha = HashAlgorithm.Create(hashAlgorithm)!;
-        for (var i = 1; i < 4; ++i)
-        {
-            var ids = Enumerable.Range(0, i).Select(_ => ha.ComputeHash(Guid.NewGuid().ToByteArray())).ToList();
-            using UploadPackRequest upr = new(ids.Select(id => (ReadOnlyMemory<byte>)id).ToArray());
-            Assert.Equal("application/x-git-upload-pack-request", upr.Headers.ContentType!.MediaType);
-            Assert.Contains(upr.Capabilities, c => c == "thin-pack");
-            StringBuilder sb = new(ids.Count * (10 + ha.HashSize / 4) + 13);
-            var e = ids.GetEnumerator();
-            Assert.True(e.MoveNext());
-            {
-                var l = upr.Capabilities.Sum(c => 1 + c.Length);
-                var prefix = $"{10 + ha.HashSize / 4 + l:x4}want ";
-                sb.Append(prefix);
-                sb.Append(e.Current.ToHexString());
-                foreach (var c in upr.Capabilities)
-                {
-                    sb.Append(' ');
-                    sb.Append(c);
-                }
-                sb.Append('\n');
-            }
-            while (e.MoveNext())
-            {
-                var prefix = $"{10 + ha.HashSize / 4:x4}want ";
-                sb.Append(prefix);
-                sb.Append(e.Current.ToHexString());
-                sb.Append('\n');
-            }
-            sb.Append("00000009done\n");
-            Assert.Equal(sb.ToString(), (await upr.ReadAsStringAsync()));
-        }
+        var c = await CommitContent.UncompressAsync(Path.Join("../../../../.git/objects", commit.AsSpan(0, 2), commit.AsSpan(2)), cancellationToken);
+        Assert.Equal(tree, c.Tree.ToHexString());
+        Assert.Equal(parent, c.Parent.ToHexString());
+        Assert.Equal(message, c.Message);
     }
 }

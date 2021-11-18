@@ -1,51 +1,8 @@
 ﻿using System.Buffers;
-using System.IO.Compression;
-using System.Linq.Expressions;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
-using System.Web;
-
-[assembly: InternalsVisibleTo("FlyByWireless.GitCore.Tests")]
 
 namespace FlyByWireless.GitCore;
-
-public static class ZLibExtensions
-{
-    private static readonly Func<ZLibStream, ReadOnlyMemory<byte>> _getInputBuffer;
-
-    static ZLibExtensions()
-    {
-        var stream = Expression.Parameter(typeof(ZLibStream));
-        var _deflateStream = Expression.Field(stream, "_deflateStream");
-        var _zlibStream = Expression.Field(Expression.Field(_deflateStream, "_inflater"), "_zlibStream");
-        var _buffer = (Func<ZLibStream, byte[]>)Expression.Lambda(Expression.Field(_deflateStream, "_buffer"), stream).Compile();
-        var AvailIn = (Func<ZLibStream, uint>)Expression.Lambda(Expression.Property(_zlibStream, "AvailIn"), stream).Compile();
-        var NextIn = (Func<ZLibStream, nint>)Expression.Lambda(Expression.Property(_zlibStream, "NextIn"), stream).Compile();
-        _getInputBuffer = stream =>
-            (int)AvailIn(stream) is not 0 and var availIn && _buffer(stream) is not null and var buffer ?
-            new(buffer, (int)(NextIn(stream) - Marshal.UnsafeAddrOfPinnedArrayElement(buffer, 0)), availIn) :
-            default;
-    }
-
-    internal static ReadOnlyMemory<byte> GetInputBuffer(this ZLibStream stream) =>
-        _getInputBuffer(stream);
-}
-
-public static class HttpExtensions
-{
-    public static void Authenticate<T>(this T client, string username, string password) where T : HttpClient =>
-        client.DefaultRequestHeaders.Authorization = new("Basic",
-            Convert.ToBase64String(Encoding.ASCII.GetBytes($"{HttpUtility.UrlEncode(username)}:{HttpUtility.UrlEncode(password)}"))
-        );
-
-    public static async Task<UploadPackAdvertisement> GetUploadPackAsync(this HttpClient client, HttpCompletionOption completionOption = HttpCompletionOption.ResponseHeadersRead, CancellationToken cancellationToken = default) =>
-        new(await client.GetAsync("info/refs?service=git-upload-pack", completionOption, cancellationToken));
-
-    public static Task<UploadPackResponse> PostUploadPackAsync(this HttpClient client, UploadPackRequest request, string hashAlgorithm = nameof(SHA1), CancellationToken cancellationToken = default) =>
-        UploadPackResponse.RequestAsync(client, request, hashAlgorithm, cancellationToken);
-}
 
 public static class ByteExtensions
 {

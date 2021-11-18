@@ -1,5 +1,4 @@
 ﻿using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -17,18 +16,7 @@ public enum ObjectType
     ReferenceDelta
 }
 
-public class UnpackedObjectEqualityComparer : IEqualityComparer<UnpackedObject>
-{
-    public static UnpackedObjectEqualityComparer Instance { get; } = new();
-
-    public bool Equals(UnpackedObject x, UnpackedObject y) =>
-        x.Type == y.Type && ByteROMEqualityComparer.Instance.Equals(x.Hash, y.Hash) && (!x.IsDelta || x.Data.Equals(y.Data));
-
-    public int GetHashCode([DisallowNull] UnpackedObject obj) =>
-        obj.IsDelta ? obj.Data.GetHashCode() : ByteROMEqualityComparer.Instance.GetHashCode(obj.Hash);
-}
-
-public readonly record struct UnpackedObject(ObjectType Type, ReadOnlySequence<byte> Data, ReadOnlyMemory<byte> Hash)
+public sealed record class UnpackedObject(ObjectType Type, ReadOnlySequence<byte> Data, ReadOnlyMemory<byte> Hash)
 {
     public bool IsDelta => Type.HasFlag(ObjectType.OffsetDelta);
 
@@ -42,6 +30,12 @@ public readonly record struct UnpackedObject(ObjectType Type, ReadOnlySequence<b
     };
 
     internal static byte[] PrologBytes(ObjectType type, long size) => Encoding.ASCII.GetBytes($"{TypeString(type)} {size}\0");
+
+    public bool Equals(UnpackedObject? other) => other != null && Type == other.Type &&
+        ByteROMEqualityComparer.Instance.Equals(Hash, other.Hash) && (!IsDelta || Data.Equals(other.Data));
+
+    public override int GetHashCode() =>
+        IsDelta ? Data.GetHashCode() : ByteROMEqualityComparer.Instance.GetHashCode(Hash);
 
     public override string ToString() => Type switch
     {
@@ -58,6 +52,8 @@ public readonly record struct UnpackedObject(ObjectType Type, ReadOnlySequence<b
         }
         return new SequenceStream(Data);
     }
+
+    public CommitContent ToCommitContent() => new(Data);
 
     public AsyncTree AsTree(string hashAlgorithm = nameof(SHA1))
     {

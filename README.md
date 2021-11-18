@@ -94,6 +94,12 @@ Triage:
                 goto Triage;
             }
             break;
+        case ObjectType.Commit:
+            {
+                var treeHash = co.ToCommitContent().Tree;
+                // TODO: cache root tree
+            }
+            break;
     }
 }
 // TODO: delete files that is not in any tree

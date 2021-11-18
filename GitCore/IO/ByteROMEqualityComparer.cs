@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace FlyByWireless.GitCore;
 
-public class ByteROMEqualityComparer : IEqualityComparer<ReadOnlyMemory<byte>>
+public sealed class ByteROMEqualityComparer : IEqualityComparer<ReadOnlyMemory<byte>>
 {
     public static ByteROMEqualityComparer Instance { get; } = new();
 

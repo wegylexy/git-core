@@ -43,7 +43,7 @@ public sealed class UploadPackAdvertisement : IAsyncEnumerable<KeyValuePair<stri
                     r -= 4;
                     if (buffer.Length < r)
                     {
-                        Array.Resize(ref buffer, r);
+                        buffer = GC.AllocateUninitializedArray<char>(r);
                     }
                     if (await reader.ReadBlockAsync(buffer.AsMemory(0, r), cancellationToken) != r)
                     {

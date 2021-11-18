@@ -63,7 +63,7 @@ internal sealed class HashStream : Stream
         {
             if (_buffer.Length < buffer.Length)
             {
-                Array.Resize(ref _buffer, buffer.Length);
+                _buffer = GC.AllocateUninitializedArray<byte>(buffer.Length);
             }
             buffer.CopyTo(_buffer);
         }

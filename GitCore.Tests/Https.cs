@@ -127,6 +127,7 @@ public class Https
             switch (co.Type)
             {
                 case ObjectType.Blob:
+                    Assert.Equal(co.Data.Length, co.AsStream().Length);
                     break;
                 case ObjectType.Tree:
                     ts.Add(co.Hash);
@@ -149,6 +150,14 @@ public class Https
                     }
                     break;
                 case ObjectType.Commit:
+                    {
+                        var c = co.ToCommitContent();
+                        _output.WriteLine("\ttree " + c.Tree.ToHexString());
+                        if (!c.Parent.IsEmpty)
+                        {
+                            _output.WriteLine("\tparent " + c.Parent.ToHexString());
+                        }
+                    }
                     break;
                 default:
                     throw new NotSupportedException("Unexpected type");
