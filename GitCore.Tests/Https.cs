@@ -55,15 +55,29 @@ public class Https
         do
         {
             var r = e.Current.Key;
-            if (r.StartsWith("refs/heads/"))
+            if (r == "HEAD")
             {
-                r = string.Concat("branch ", r.AsSpan(11));
+                _output.WriteLine($"HEAD -> commit {e.Current.Value.ToHexString()}");
+            }
+            else if (r.StartsWith("refs/heads/"))
+            {
+                _output.WriteLine($"branch {r.AsSpan(11)} -> commit {e.Current.Value.ToHexString()}");
             }
             else if (r.StartsWith("refs/tags/"))
             {
-                r = string.Concat("tag ", r.AsSpan(10));
+                if (r.EndsWith("^{}"))
+                {
+                    _output.WriteLine($"tag {r.AsSpan()[10..^3]} -> commit {e.Current.Value.ToHexString()}");
+                }
+                else
+                {
+                    _output.WriteLine($"tag {r.AsSpan(10)} -> tag {e.Current.Value.ToHexString()}");
+                }
             }
-            _output.WriteLine($"{r} -> commit {e.Current.Value.ToHexString()}");
+            else
+            {
+                _output.WriteLine($"{r} -> {e.Current.Value.ToHexString()}");
+            }
             Assert.False(e.Current.Key.Contains(' '));
             Assert.False(e.Current.Key.Contains('\n'));
         }
@@ -72,7 +86,9 @@ public class Https
 
     [Theory]
     [InlineData("f0d3a70ceaa69fb70811f58254dc738e0f939eac")]
-    [InlineData("8c0e16d92cfa0c59b4c3c1dabc52b56f66852ae6")]
+    [InlineData("0e912ab6ea6efdcbee8ea7f3ed98623db44b55d0", Skip = "tag")]
+    [InlineData("e952cd0312c660f7443e323afea25bad5eeeb78c")]
+    [InlineData("d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d", Skip = "tree")]
     public async Task UploadPackAsync(string leafHex)
     {
         ReadOnlyMemory<byte> leaf = leafHex.ParseHex(), have = "985f7c92b19e5de0f28fefb96a9d004d6c4f4841".ParseHex();
@@ -84,7 +100,13 @@ public class Https
             want: new[] { leaf },
             depth: 1,
             have: new[] { have }
-        ));
+        )
+        {
+            Capabilities =
+            {
+                "include-tag"
+            }
+        });
         if (r.Acknowledged.Any())
         {
             foreach (var h in r.Acknowledged)
@@ -157,6 +179,12 @@ public class Https
                         {
                             _output.WriteLine("\tparent " + c.Parent.ToHexString());
                         }
+                    }
+                    break;
+                case ObjectType.Tag:
+                    {
+                        var t = co.ToTagContent();
+                        _output.WriteLine($"\t{t.Name} -> {t.Type.ToString().ToLowerInvariant()} {t.Object.ToHexString()}");
                     }
                     break;
                 default:

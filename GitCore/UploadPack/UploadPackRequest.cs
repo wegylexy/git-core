@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace FlyByWireless.GitCore;
@@ -37,20 +38,18 @@ public sealed class UploadPackRequest : HttpContent
     protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context)
     {
         byte[] a;
-        byte a2, a3;
         Memory<byte> hex;
         {
             using var e = Want.GetEnumerator();
             e.MoveNext();
             a = GC.AllocateUninitializedArray<byte>(10 + e.Current.Length * 2);
-            a2 = (byte)((a.Length >> 4) & 0b1111).ToHex();
-            a3 = (byte)(a.Length & 0b1111).ToHex();
+            byte
+                a2 = (byte)((a.Length >> 4) & 0b1111).ToHex(),
+                a3 = (byte)(a.Length & 0b1111).ToHex();
             hex = a.AsMemory(9, e.Current.Length * 2);
             // Writes first want
-            a[4] = 0x77; // 'w'
-            a[5] = 0x61; // 'a'
-            a[6] = 0x6e; // 'n'
-            a[7] = 0x74; // 't'
+            MemoryMarshal.AsRef<int>(a.AsSpan(4, 8)) =
+                BitConverter.IsLittleEndian ? 0x74_6e_61_77 : 0x77_61_6e_74; // "want"
             a[8] = 0x20; // ' '
             e.Current.ToHexASCII(hex.Span);
             a[^1] = 10; // '\n'
@@ -108,14 +107,13 @@ public sealed class UploadPackRequest : HttpContent
             await stream.WriteAsync(a.AsMemory(9, length));
         }
         // Flushes
-        a[15] = a[14] = a[13] = a[12] = 0x30; // "0000";
+        MemoryMarshal.AsRef<int>(a.AsSpan(12, 4)) = 0x30_30_30_30; // "0000";
         await stream.WriteAsync(a.AsMemory(12, 4));
         // Writes have (if any)
         if (Have is not null)
         {
-            a[4] = 0x68; // 'h'
-            a[6] = 0x76; // 'v'
-            a[7] = 0x65; // 'e'
+            MemoryMarshal.AsRef<int>(a.AsSpan(4, 8)) =
+                BitConverter.IsLittleEndian ? 0x65_76_61_68 : 0x68_61_76_65; // "have"
             foreach (var id in Have)
             {
                 id.ToHexASCII(hex.Span);
@@ -123,12 +121,8 @@ public sealed class UploadPackRequest : HttpContent
             }
         }
         // Writes done
-        a[2] = 0x30; // '0'
-        a[3] = 0x39; // '9'
-        a[4] = 0x64; // 'd'
-        a[5] = 0x6f; // 'o'
-        a[6] = 0x6e; // 'n'
-        a[7] = 0x65; // 'e'
+        MemoryMarshal.AsRef<long>(a.AsSpan(0, 8)) =
+            BitConverter.IsLittleEndian ? 0x65_6e_6f_64_39_30_30_30 : 0x30_30_30_39_64_6f_6e_65; // "0009done"
         a[8] = 10; // '\n'
         await stream.WriteAsync(a.AsMemory(0, 9));
         await stream.FlushAsync();

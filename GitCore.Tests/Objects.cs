@@ -127,4 +127,30 @@ public class Objects
         Assert.Equal(parent, c.Parent.ToHexString());
         Assert.Equal(message, c.Message);
     }
+
+    [Fact]
+    public void Tag()
+    {
+        User user = new("Bob Alice", "alice.bob@example.com");
+        TagContent expected = new(new byte[] { 2 }, ObjectType.Commit, "reply",
+            user, new DateTimeOffset(2020, 9, 12, 16, 0, 0, new(8, 0, 0)),
+            "I'm fine.\nThank you."
+        );
+        var s = expected.ToString();
+        Assert.DoesNotContain('\r', s);
+        TagContent actual = new(new(Encoding.UTF8.GetBytes(s)));
+        Assert.Equal(expected, actual);
+        Assert.Equal(s, actual.ToString());
+    }
+
+    [Theory]
+    [InlineData("0e912ab6ea6efdcbee8ea7f3ed98623db44b55d0", ObjectType.Commit, "e952cd0312c660f7443e323afea25bad5eeeb78c", "1.0.0-beta", "Unpack blob, tree, and ref-delta\n")]
+    public async Task TagAsync(string tag, ObjectType type, string hex, string name, string message, CancellationToken cancellationToken = default)
+    {
+        var c = await TagContent.UncompressAsync(Path.Join("../../../../.git/objects", tag.AsSpan(0, 2), tag.AsSpan(2)), cancellationToken);
+        Assert.Equal(type, c.Type);
+        Assert.Equal(hex, c.Object.ToHexString());
+        Assert.Equal(name, c.Name);
+        Assert.Equal(message, c.Message);
+    }
 }

@@ -21,13 +21,12 @@ await foreach (var p in upa)
     var r = p.Key;
     if (r.StartsWith("refs/heads/"))
     {
-        r = string.Concat("branch ", r.AsSpan(11));
+        Console.WriteLine($"branch {r.AsSpan(11)} -> commit {p.Value.ToHexString()}");
     }
-    else if (r.StartsWith("refs/tags/"))
+    else if (r.StartsWith("refs/tags/") && r.EndsWith("^{}"))
     {
-        r = string.Concat("tag ", r.AsSpan(10));
+        Console.WriteLine($"tag {r.AsSpan()[10..^3]} -> commit {p.Value.ToHexString()}");
     }
-    Console.WriteLine($"{r} -> commit {p.Value.ToHexString()}");
 }
 ```
 
@@ -62,12 +61,18 @@ using var response = await client.PostUploadPackAsync(new(
         "1ff0c423042b46cb1d617b81efb715defbe8054d".ParseHex(),
         "9491a2fda28342ab358eaf234e1afe0c07a53d62".ParseHex()
     }
-));
+)
+{
+    Capabilities =
+    {
+        "include-tag"
+    }
+});
 await foreach (var uo in response.Pack) // for each unpacked object
 {
     var co = uo; // delta will re-assign current object
 Triage:
-    switch (uo.Type)
+    switch (co.Type)
     {
         case ObjectType.Blob:
             // TODO: save for every matching tree entry
@@ -98,6 +103,15 @@ Triage:
             {
                 var treeHash = co.ToCommitContent().Tree;
                 // TODO: cache root tree
+            }
+            break;
+        case ObjectType.Tag when co.Type == ObjectType.Commit:
+            {
+                var tag = co.ToTagContent();
+                var commitHash = tag.Object;
+                var name = tag.Name;
+                var message = tag.Message;
+                // TODO: associate tag message to commit
             }
             break;
     }

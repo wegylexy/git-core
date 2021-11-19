@@ -53,7 +53,23 @@ public sealed record class UnpackedObject(ObjectType Type, ReadOnlySequence<byte
         return new SequenceStream(Data);
     }
 
-    public CommitContent ToCommitContent() => new(Data);
+    public CommitContent ToCommitContent()
+    {
+        if (Type != ObjectType.Commit)
+        {
+            throw new InvalidOperationException("Object is not commit");
+        }
+        return new(Data);
+    }
+
+    public TagContent ToTagContent()
+    {
+        if (Type != ObjectType.Tag)
+        {
+            throw new InvalidOperationException("Object is not tag");
+        }
+        return new(Data);
+    }
 
     public AsyncTree AsTree(string hashAlgorithm = nameof(SHA1))
     {

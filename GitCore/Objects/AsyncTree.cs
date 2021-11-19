@@ -33,6 +33,7 @@ public sealed class AsyncTree : IAsyncEnumerable<TreeEntry>
         using ZLibStream zls = new(file, CompressionMode.Decompress);
         var size = 0;
         {
+            // Asserts type
             var buffer = GC.AllocateUninitializedArray<byte>(5);
             if (await zls.ReadAsync(buffer.AsMemory(0, 5), cancellationToken) != 5)
             {
