@@ -17,6 +17,10 @@ public enum TreeEntryType
 
 public readonly record struct TreeEntry(int Mode, string Path, ReadOnlyMemory<byte> Hash)
 {
+    public TreeEntry(TreeEntryType type, int permission, string path, ReadOnlyMemory<byte> hash) :
+        this(((int)type << 12) | permission, path, hash)
+    { }
+
     public TreeEntryType Type => (TreeEntryType)(Mode >> 12);
 
     public int Permission => Mode & 0b111_111_111;

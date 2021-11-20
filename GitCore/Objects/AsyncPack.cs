@@ -142,10 +142,9 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
                     default:
                         {
                             ReadOnlySequence<byte> data;
-                            ReadOnlyMemory<byte> hash;
-                            var prolog = UnpackedObject.PrologBytes(type, size);
+                            var header = UnpackedObject.HeaderBytes(type, size);
                             ha.Initialize();
-                            ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
+                            ha.TransformBlock(header, 0, header.Length, null, 0);
                             if (size > 0)
                             {
                                 Stack<ReadOnlyMemory<byte>> segments = new();
@@ -180,9 +179,7 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
                             {
                                 data = ReadOnlySequence<byte>.Empty;
                             }
-                            ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                            hash = ha.Hash!;
-                            yield return new(type, data, hash);
+                            yield return new(type, data, ha.ComputeHash(Array.Empty<byte>()));
                         }
                         break;
                 }

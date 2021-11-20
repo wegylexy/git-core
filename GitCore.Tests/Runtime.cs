@@ -60,16 +60,14 @@ public class Runtime
         {
             using var ha = HashAlgorithm.Create(algorithm)!;
             ha.TransformBlock(data, 0, 16, null, 0);
-            ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-            actual = ha.Hash!;
+            actual = ha.ComputeHash(Array.Empty<byte>());
         }
         Assert.True(actual.AsSpan().SequenceEqual(expected));
         {
             using var ha = HashAlgorithm.Create(algorithm)!;
             ha.TransformBlock(data, 0, 8, null, 0);
             ha.TransformBlock(data, 8, 8, null, 0);
-            ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-            actual = ha.Hash!;
+            actual = ha.ComputeHash(Array.Empty<byte>());
         }
         Assert.True(actual.AsSpan().SequenceEqual(expected));
     }

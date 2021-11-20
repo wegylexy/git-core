@@ -23,13 +23,12 @@ public class Objects
         {
             using var ha = HashAlgorithm.Create(hashAlgorithm)!;
             {
-                var prolog = Encoding.ASCII.GetBytes(FormattableString.Invariant($"blob {data.Length}\0"));
-                ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
+                var header = Encoding.ASCII.GetBytes(FormattableString.Invariant($"blob {data.Length}\0"));
+                ha.TransformBlock(header, 0, header.Length, null, 0);
             }
-            ha.TransformFinalBlock(data, 0, data.Length);
             return new
             {
-                Hash = ha.Hash!,
+                Hash = ha.ComputeHash(data),
                 Data = data
             };
         }).ToList();

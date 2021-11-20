@@ -128,21 +128,6 @@ public static class ByteExtensions
         }
     }
 
-    public static async Task<ReadOnlyMemory<byte>> HashObjectAsync(this Stream stream, ObjectType type = ObjectType.Blob, string hashAlgorithm = nameof(SHA1), CancellationToken cancellationToken = default)
-    {
-        using var ha = HashAlgorithm.Create(hashAlgorithm)!;
-        using StackStream ss = new(stream, true);
-        ss.Push(Encoding.ASCII.GetBytes(FormattableString.Invariant(@$"{type switch
-        {
-            ObjectType.Commit => "commit",
-            ObjectType.Tree => "tree",
-            ObjectType.Blob => "blob",
-            ObjectType.Tag => "tag",
-            _ => throw new InvalidDataException("Invalid object type")
-        }} {stream.Length}")));
-        return await ha.ComputeHashAsync(ss, cancellationToken);
-    }
-
     public static async Task<ReadOnlySequence<byte>> ToSequenceAsync(this Stream stream, int segmentSize = 4096, CancellationToken cancellationToken = default)
     {
         Stack<ReadOnlyMemory<byte>> segments = new();

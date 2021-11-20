@@ -29,7 +29,7 @@ public sealed record class UnpackedObject(ObjectType Type, ReadOnlySequence<byte
         _ => throw new InvalidDataException("Invalid object type")
     };
 
-    internal static byte[] PrologBytes(ObjectType type, long size) => Encoding.ASCII.GetBytes($"{TypeString(type)} {size}\0");
+    internal static byte[] HeaderBytes(ObjectType type, long size) => Encoding.ASCII.GetBytes($"{TypeString(type)} {size}\0");
 
     public bool Equals(UnpackedObject? other) => other != null && Type == other.Type &&
         ByteROMEqualityComparer.Instance.Equals(Hash, other.Hash) && (!IsDelta || Data.Equals(other.Data));
@@ -111,8 +111,8 @@ public sealed record class UnpackedObject(ObjectType Type, ReadOnlySequence<byte
             }
         }
         using var ha = HashAlgorithm.Create(hashAlgorithm)!;
-        var prolog = PrologBytes(baseObject.Type, derivedSize);
-        ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
+        var header = HeaderBytes(baseObject.Type, derivedSize);
+        ha.TransformBlock(header, 0, header.Length, null, 0);
         {
             byte[]? buffer = null;
             try
@@ -192,7 +192,6 @@ public sealed record class UnpackedObject(ObjectType Type, ReadOnlySequence<byte
         {
             throw new InvalidDataException("Invalid delta");
         }
-        ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
         ReadOnlySequence<byte> data;
         if (segments.TryPop(out var last))
         {
@@ -208,6 +207,6 @@ public sealed record class UnpackedObject(ObjectType Type, ReadOnlySequence<byte
         {
             data = ReadOnlySequence<byte>.Empty;
         }
-        return new(baseObject.Type, data, ha.Hash);
+        return new(baseObject.Type, data, ha.ComputeHash(Array.Empty<byte>()));
     }
 }

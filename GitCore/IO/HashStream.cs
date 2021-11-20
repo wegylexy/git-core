@@ -29,13 +29,13 @@ internal sealed class HashStream : Stream
 
     public int HashSize => _ha.HashSize;
 
-    public HashStream(Stream stream, string hashAlgorithm, byte[]? prolog = null, bool leaveOpen = false)
+    public HashStream(Stream stream, string hashAlgorithm, byte[]? header = null, bool leaveOpen = false)
     {
         _stream = stream;
         _ha = HashAlgorithm.Create(hashAlgorithm)!;
-        if (prolog != null)
+        if (header != null)
         {
-            _ha.TransformBlock(prolog, 0, prolog.Length, null, 0);
+            _ha.TransformBlock(header, 0, header.Length, null, 0);
         }
         _leaveOpen = leaveOpen;
     }

@@ -91,13 +91,13 @@ internal sealed class StackStream : Stream
 
     public override void Write(byte[] buffer, int offset, int count) => throw new InvalidOperationException();
 
-    public bool Push(ReadOnlyMemory<byte> prolog)
+    public bool Push(ReadOnlyMemory<byte> header)
     {
-        if (prolog.IsEmpty)
+        if (header.IsEmpty)
         {
             return false;
         }
-        _stack.Push(prolog);
+        _stack.Push(header);
         return true;
     }
 
