@@ -36,12 +36,24 @@ Git remote capable of `allow-reachable-sha1-in-want`, `shallow`, and `object-for
 - `https://github.com/wegylexy/git-core.git/`  
   (trailing `/` is required)
 
-Wanted objects:
-- `tree d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d`
+Local:
+- `tree f0d3a70ceaa69fb70811f58254dc738e0f939eac`
+  - `100644 blob 1ff0c423042b46cb1d617b81efb715defbe8054d	.gitattributes`
+  - `100644 blob 9491a2fda28342ab358eaf234e1afe0c07a53d62	.gitignore`
 
-Local existing objects:
-- `blob 1ff0c423042b46cb1d617b81efb715defbe8054d`
-- `blob 9491a2fda28342ab358eaf234e1afe0c07a53d62`
+Remote:
+- `tree d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d`
+  - `100644 blob 1ff0c423042b46cb1d617b81efb715defbe8054d	.gitattributes` (common)
+  - `100644 blob 9491a2fda28342ab358eaf234e1afe0c07a53d62	.gitignore` (common)
+  - `040000 tree 6aaf05e6bf2af00e0574cc021ff72b29386e5eb1	GitCore.Tests`
+    - ...
+  - `100644 blob a03fb82afc9b189ffc24de772720456de61aee5e	GitCore.sln`
+  - `040000 tree ccd51a743e683abbb13481be1c0384d9ce837d0c	GitCore`
+    - ...
+  - `100644 blob d2489a28362500baaeefe5121a20fbe9b9145ead	LICENSE`
+  - `100644 blob c9b283eddb6d8926508d645b15b671bc2802c232	README.md`
+
+Default capabilities includes `thin-pack`. The 2 blobs that local already has will not be packed.
 
 ```cs
 using FlyByWireless.GitCore;
@@ -58,8 +70,7 @@ using var response = await client.PostUploadPackAsync(new(
     depth: 1,
     have: new ReadOnlyMemory<byte>[]
     {
-        "1ff0c423042b46cb1d617b81efb715defbe8054d".ParseHex(),
-        "9491a2fda28342ab358eaf234e1afe0c07a53d62".ParseHex()
+        "f0d3a70ceaa69fb70811f58254dc738e0f939eac".ParseHex()
     }
 )
 {

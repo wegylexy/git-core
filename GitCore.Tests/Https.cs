@@ -86,9 +86,9 @@ public class Https
 
     [Theory]
     [InlineData("f0d3a70ceaa69fb70811f58254dc738e0f939eac")]
-    [InlineData("0e912ab6ea6efdcbee8ea7f3ed98623db44b55d0", Skip = "tag")]
+    //[InlineData("0e912ab6ea6efdcbee8ea7f3ed98623db44b55d0")]
     [InlineData("e952cd0312c660f7443e323afea25bad5eeeb78c")]
-    [InlineData("d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d", Skip = "tree")]
+    //[InlineData("d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d")]
     public async Task UploadPackAsync(string leafHex)
     {
         ReadOnlyMemory<byte> leaf = leafHex.ParseHex(), have = "985f7c92b19e5de0f28fefb96a9d004d6c4f4841".ParseHex();
@@ -104,6 +104,7 @@ public class Https
         {
             Capabilities =
             {
+                "multi_ack",
                 "include-tag"
             }
         });

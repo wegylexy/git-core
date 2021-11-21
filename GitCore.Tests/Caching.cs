@@ -7,9 +7,9 @@ namespace FlyByWireless.GitCore.Tests;
 public class Caching
 {
     [Fact]
-    public async Task HashObjectAsync()
+    public async Task HashBlobAsync()
     {
-        Cache cache = new("Test", nameof(SHA1));
+        NtfsCache cache = new("Test", nameof(SHA1));
         var temp = Path.GetTempFileName();
         try
         {
@@ -18,7 +18,7 @@ public class Caching
             FileInfo file = new(temp);
             var written = file.LastWriteTimeUtc;
             // new
-            var expected = (await cache.HashObjectAsync(file)).ToArray();
+            var expected = (await cache.HashBlobAsync(file)).ToArray();
             var path = temp + ":Test." + nameof(SHA1);
             Assert.True(File.Exists(path));
             {
@@ -28,7 +28,7 @@ public class Caching
             }
             Assert.Equal(written, File.GetLastWriteTimeUtc(temp));
             // cache
-            Assert.Equal(expected, (await cache.HashObjectAsync(file)).ToArray());
+            Assert.Equal(expected, (await cache.HashBlobAsync(file)).ToArray());
             Assert.Equal(written, File.GetLastWriteTimeUtc(temp));
             // hack
             {
@@ -38,7 +38,7 @@ public class Caching
                 await write.FlushAsync();
             }
             File.SetLastWriteTimeUtc(temp, written);
-            Assert.NotEqual(expected, (await cache.HashObjectAsync(file)).ToArray());
+            Assert.NotEqual(expected, (await cache.HashBlobAsync(file)).ToArray());
             // corrupt
             {
                 using var write = File.Open(path, FileMode.Truncate, FileAccess.Write, FileShare.Read);
@@ -46,14 +46,43 @@ public class Caching
                 await write.FlushAsync();
             }
             File.SetLastWriteTimeUtc(temp, written);
-            Assert.Equal(expected, (await cache.HashObjectAsync(file)).ToArray());
+            Assert.Equal(expected, (await cache.HashBlobAsync(file)).ToArray());
             // fresh
-            Assert.Equal(expected, (await cache.HashObjectAsync(file, true)).ToArray());
+            Assert.Equal(expected, (await cache.HashBlobAsync(file, true)).ToArray());
             Assert.Equal(written, File.GetLastWriteTimeUtc(temp));
         }
         finally
         {
             File.Delete(temp);
+        }
+    }
+
+    [Fact]
+    public async Task HashTreeAsync()
+    {
+        var path = Path.Join(Path.GetTempPath(), "GitCore.Tests." + Guid.NewGuid().ToString("n"));
+        try
+        {
+            Directory.CreateDirectory(path);
+            NtfsCache cache = new("Test", nameof(SHA1));
+            // new
+            Assert.Equal("4b825dc642cb6eb9a060e54bf8d69288fbee4904", (await cache.HashTreeAsync(new(path))).ToHexString());
+            // changed
+            await File.WriteAllTextAsync(Path.Join(path, ".gitattributes"), (await File.ReadAllTextAsync("../../../../.gitattributes")).Replace("\r\n", "\n"));
+            await File.WriteAllTextAsync(Path.Join(path, ".gitignore"), (await File.ReadAllTextAsync("../../../../.gitignore")).Replace("\r\n", "\n"));
+            Assert.NotEqual("f0d3a70ceaa69fb70811f58254dc738e0f939eac", (await cache.HashTreeAsync(new(path))).ToHexString());
+            // fresh
+            Assert.Equal("f0d3a70ceaa69fb70811f58254dc738e0f939eac", (await cache.HashTreeAsync(new(path), true)).ToHexString());
+            // cache
+            Assert.Equal("f0d3a70ceaa69fb70811f58254dc738e0f939eac", (await cache.HashTreeAsync(new(path))).ToHexString());
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(path, true);
+            }
+            catch (DirectoryNotFoundException) { }
         }
     }
 }
