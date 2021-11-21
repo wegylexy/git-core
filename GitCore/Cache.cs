@@ -7,6 +7,32 @@ namespace FlyByWireless.GitCore;
 
 public interface ICache
 {
+    internal static byte[] Hash(string type, Stack<ReadOnlyMemory<byte>> segments, string hashAlgorithm = nameof(SHA1))
+    {
+        var size = segments.Sum(m => m.Length);
+        using var ha = HashAlgorithm.Create(hashAlgorithm)!;
+        {
+            var header = Encoding.ASCII.GetBytes($"{type} {size}\0");
+            ha.TransformBlock(header, 0, header.Length, null, 0);
+        }
+        if (size > 0)
+        {
+            var runningIndex = size;
+            var last = segments.Pop();
+            BytesSegment end = new(last, null, runningIndex -= last.Length), start = end;
+            while (segments.TryPop(out var previous))
+            {
+                start = new(previous, start, runningIndex -= previous.Length);
+            }
+            return ha.ComputeHash(new SequenceStream(new(start, 0, end, end.Memory.Length)));
+        }
+        else
+        {
+            ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+            return ha.Hash!;
+        }
+    }
+
     public Task<ReadOnlyMemory<byte>> HashBlobAsync(FileInfo file, bool fresh = false, CancellationToken cancellationToken = default);
 
     public Task<ReadOnlyMemory<byte>> HashTreeAsync(DirectoryInfo directory, bool fresh = false, CancellationToken cancellationToken = default);
@@ -44,16 +70,85 @@ public sealed class NtfsCache : ICache
         }
         {
             byte[] hash;
-            var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(25, 16 + _hs));
-            try
+            using var data = File.OpenRead(file.FullName);
             {
-                using var read = File.OpenRead(file.FullName); // TODO: normalize EOL in case of plain text
+                var buffer = GC.AllocateUninitializedArray<byte>(8000);
+                var binary = false;
+                var read = 0;
+                while (read < 8000)
+                {
+                    var r = await data.ReadAsync(buffer.AsMemory(read, 8000 - read), cancellationToken);
+                    if (r == 0)
+                    {
+                        break;
+                    }
+                    if (buffer.AsSpan(read, r).Contains<byte>(0))
+                    {
+                        binary = true;
+                        read += r;
+                        break;
+                    }
+                    read += r;
+                }
+                if (binary)
                 {
                     using var ha = HashAlgorithm.Create(_ha)!;
-                    var length = Encoding.ASCII.GetBytes(FormattableString.Invariant($"blob {read.Length}\0"), buffer);
-                    ha.TransformBlock(buffer, 0, length, null, 0);
-                    hash = await ha.ComputeHashAsync(read, cancellationToken);
+                    var header = Encoding.ASCII.GetBytes(FormattableString.Invariant($"blob {data.Length}\0"));
+                    ha.TransformBlock(header, 0, header.Length, null, 0);
+                    ha.TransformBlock(buffer, 0, read, null, 0);
+                    hash = await ha.ComputeHashAsync(data, cancellationToken);
                 }
+                else // skip '\r' in front of '\n'
+                {
+                    Stack<ReadOnlyMemory<byte>> segments = new();
+                    for (var i = 0; i < read;)
+                    {
+                        var r = buffer.AsSpan(i, read - i).IndexOf<byte>(13);
+                        if (r < 0)
+                        {
+                            segments.Push(buffer.AsMemory(i, read - i));
+                            i = 0;
+                        }
+                        else
+                        {
+                            if (i + r + 1 < read)
+                            {
+                                if (buffer[i + r + 1] == 10)
+                                {
+                                    buffer[i + r++] = 10;
+                                    segments.Push(buffer.AsMemory(i, r++));
+                                }
+                                else
+                                {
+                                    segments.Push(buffer.AsMemory(i, ++r));
+                                }
+                                i += r;
+                                continue;
+                            }
+                            segments.Push(buffer.AsMemory(i, r));
+                            i = 1;
+                        }
+                        buffer = GC.AllocateUninitializedArray<byte>(4096);
+                        if (i == 1)
+                        {
+                            buffer[0] = 13;
+                        }
+                        r = await data.ReadAsync(buffer.AsMemory(i, buffer.Length - i), cancellationToken);
+                        if (r == 0)
+                        {
+                            break;
+                        }
+                        read = i + r;
+                        if (i == 1 && buffer[0] != 10)
+                        {
+                            i = 0;
+                        }
+                    }
+                    hash = ICache.Hash("blob", segments, _ha);
+                }
+            }
+            {
+                var buffer = ArrayPool<byte>.Shared.Rent(16 + _hs);
                 try
                 {
                     file.Refresh();
@@ -62,9 +157,9 @@ public sealed class NtfsCache : ICache
                     hash.CopyTo(buffer.AsSpan(16, _hs));
                     try
                     {
-                        using var write = File.Create(path);
-                        await write.WriteAsync(buffer.AsMemory(0, 16 + _hs), cancellationToken);
-                        await write.FlushAsync(cancellationToken);
+                        using var meta = File.Create(path);
+                        await meta.WriteAsync(buffer.AsMemory(0, 16 + _hs), cancellationToken);
+                        await meta.FlushAsync(cancellationToken);
                     }
                     finally
                     {
@@ -72,10 +167,10 @@ public sealed class NtfsCache : ICache
                     }
                 }
                 catch (IOException) { }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
             return hash;
         }
@@ -117,28 +212,7 @@ public sealed class NtfsCache : ICache
                             throw new NotSupportedException("Unexpected file system info");
                     }
                 }
-                var size = segments.Sum(m => m.Length);
-                using var ha = HashAlgorithm.Create(_ha)!;
-                {
-                    var header = Encoding.ASCII.GetBytes($"tree {size}\0");
-                    ha.TransformBlock(header, 0, header.Length, null, 0);
-                }
-                if (size > 0)
-                {
-                    var runningIndex = size;
-                    var last = segments.Pop();
-                    BytesSegment end = new(last, null, runningIndex -= last.Length), start = end;
-                    while (segments.TryPop(out var previous))
-                    {
-                        start = new(previous, start, runningIndex -= previous.Length);
-                    }
-                    hash = ha.ComputeHash(new SequenceStream(new(start, 0, end, end.Memory.Length)));
-                }
-                else
-                {
-                    ha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                    hash = ha.Hash!;
-                }
+                hash = ICache.Hash("tree", segments, _ha);
             }
             try
             {

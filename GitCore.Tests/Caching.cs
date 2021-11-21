@@ -68,8 +68,8 @@ public class Caching
             // new
             Assert.Equal("4b825dc642cb6eb9a060e54bf8d69288fbee4904", (await cache.HashTreeAsync(new(path))).ToHexString());
             // changed
-            await File.WriteAllTextAsync(Path.Join(path, ".gitattributes"), (await File.ReadAllTextAsync("../../../../.gitattributes")).Replace("\r\n", "\n"));
-            await File.WriteAllTextAsync(Path.Join(path, ".gitignore"), (await File.ReadAllTextAsync("../../../../.gitignore")).Replace("\r\n", "\n"));
+            File.Copy("../../../../.gitattributes", Path.Join(path, ".gitattributes"));
+            File.Copy("../../../../.gitignore", Path.Join(path, ".gitignore"));
             Assert.NotEqual("f0d3a70ceaa69fb70811f58254dc738e0f939eac", (await cache.HashTreeAsync(new(path))).ToHexString());
             // fresh
             Assert.Equal("f0d3a70ceaa69fb70811f58254dc738e0f939eac", (await cache.HashTreeAsync(new(path), true)).ToHexString());
