@@ -14,6 +14,14 @@ public static class HttpExtensions
             Convert.ToBase64String(Encoding.ASCII.GetBytes($"{HttpUtility.UrlEncode(username)}:{HttpUtility.UrlEncode(password)}"))
         );
 
+    public static HttpRequestMessage WithAuthorization(this HttpRequestMessage message, string username, string password)
+    {
+        message.Headers.Authorization = new("Basic",
+            Convert.ToBase64String(Encoding.ASCII.GetBytes($"{HttpUtility.UrlEncode(username)}:{HttpUtility.UrlEncode(password)}"))
+        );
+        return message;
+    }
+
     public static async Task<UploadPackAdvertisement> GetUploadPackAsync(this HttpClient client, AuthenticationHeaderValue? authentication = null, HttpCompletionOption completionOption = HttpCompletionOption.ResponseHeadersRead, CancellationToken cancellationToken = default) =>
         new(await client.SendAsync(new(HttpMethod.Get, "info/refs?service=git-upload-pack")
         {
@@ -26,7 +34,7 @@ public static class HttpExtensions
     public static async Task<ReadOnlySequence<byte>> ReadAsSequenceAsync(this HttpContent content, int segmentSize = 81920, Action<long>? progress = null, CancellationToken cancellationToken = default)
     {
         Stack<ReadOnlyMemory<byte>> segments = new();
-        using var stream = await content.ReadAsStreamAsync(cancellationToken);
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken);
         return await stream.ToSequenceAsync(segmentSize, progress, cancellationToken);
     }
 
