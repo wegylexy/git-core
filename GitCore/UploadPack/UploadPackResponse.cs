@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -6,7 +7,7 @@ namespace FlyByWireless.GitCore;
 
 public sealed class UploadPackResponse : IDisposable
 {
-    internal static async Task<UploadPackResponse> RequestAsync(HttpClient client, UploadPackRequest request, string hashAlgorithm = nameof(SHA1), CancellationToken cancellationToken = default)
+    internal static async Task<UploadPackResponse> RequestAsync(HttpClient client, UploadPackRequest request, AuthenticationHeaderValue? authentication = null, string hashAlgorithm = nameof(SHA1), CancellationToken cancellationToken = default)
     {
         int hashSize;
         {
@@ -15,6 +16,7 @@ public sealed class UploadPackResponse : IDisposable
         }
         var response = await client.SendAsync(new(HttpMethod.Post, "git-upload-pack")
         {
+            Headers = { Authorization = authentication },
             Content = request
         }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (response.EnsureSuccessStatusCode().Content.Headers.ContentType is not { MediaType: "application/x-git-upload-pack-result" })

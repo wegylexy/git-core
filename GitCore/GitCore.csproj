@@ -6,7 +6,7 @@
 		<RootNamespace>FlyByWireless.GitCore</RootNamespace>
 		<AssemblyName>$(RootNamespace)</AssemblyName>
 		<PackageId>$(RootNamespace)</PackageId>
-		<VersionPrefix>1.0.1</VersionPrefix>
+		<VersionPrefix>1.0.2</VersionPrefix>
 		<VersionSuffix>beta</VersionSuffix>
 		<Authors>WONG Tin Chi Timothy</Authors>
 		<Description>Essentials to implement a custom managed Git client for incremental updates of huge downloadable contents (DLC) published to a Git repository.</Description>

@@ -1,4 +1,5 @@
-﻿using Xunit;
+﻿using System.IO.Compression;
+using Xunit;
 using Xunit.Abstractions;
 
 namespace FlyByWireless.GitCore.Tests;
@@ -34,6 +35,28 @@ public class Https
         using var r = await hc.GetAsync(null as Uri);
         _output.WriteLine(r.StatusCode.ToString());
         Assert.True(r.IsSuccessStatusCode);
+    }
+
+    [Fact]
+    public async Task ZipAsync()
+    {
+        ZipArchive zip;
+        {
+            using HttpClient hc = new();
+            using var r = await hc.GetAsync("https://github.com/wegylexy/git-core/archive/refs/heads/master.zip", HttpCompletionOption.ResponseHeadersRead);
+            _output.WriteLine(r.StatusCode.ToString());
+            r.EnsureSuccessStatusCode();
+            _output.WriteLine($"Chunked: {r.Headers.TransferEncodingChunked is true}");
+            _output.WriteLine($"Size: {r.Content.Headers.ContentLength?.ToString() ?? "unknown"}");
+            zip = await r.Content.ReadAsZipAsync(progress: read => _output.WriteLine($"Read: {read}"));
+        }
+        using (zip)
+        {
+            foreach (var e in zip.Entries)
+            {
+                _output.WriteLine($"{e.FullName}\t{e.CompressedLength}/{e.Length}");
+            }
+        }
     }
 
     [Fact]

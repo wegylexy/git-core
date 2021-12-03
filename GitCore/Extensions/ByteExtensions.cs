@@ -1,6 +1,4 @@
 ﻿using System.Buffers;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace FlyByWireless.GitCore;
 
@@ -128,20 +126,30 @@ public static class ByteExtensions
         }
     }
 
-    public static async Task<ReadOnlySequence<byte>> ToSequenceAsync(this Stream stream, int segmentSize = 4096, CancellationToken cancellationToken = default)
+    public static async Task<ReadOnlySequence<byte>> ToSequenceAsync(this Stream stream, int segmentSize = 81920, Action<long>? progress = null, CancellationToken cancellationToken = default)
     {
         Stack<ReadOnlyMemory<byte>> segments = new();
-        long runningIndex = 0;
+        var runningIndex = 0L;
         for (; ; )
         {
             var segment = GC.AllocateUninitializedArray<byte>(segmentSize);
-            var read = await stream.ReadAsync(segment, cancellationToken);
+            var read = 0;
+            for (; ; )
+            {
+                var r = await stream.ReadAsync(segment.AsMemory(read, segment.Length - read), cancellationToken);
+                if (r == 0)
+                {
+                    break;
+                }
+                read += r;
+                runningIndex += r;
+                progress?.Invoke(runningIndex);
+            }
             if (read == 0)
             {
                 break;
             }
             segments.Push(segment.AsMemory(0, read));
-            runningIndex += read;
         }
         if (segments.TryPop(out var last))
         {
