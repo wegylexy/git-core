@@ -66,15 +66,33 @@ public class Caching
             Directory.CreateDirectory(path);
             NtfsCache cache = new("Test", nameof(SHA1));
             // new
-            Assert.Equal("4b825dc642cb6eb9a060e54bf8d69288fbee4904", (await cache.HashTreeAsync(new(path))).ToHexString());
-            // changed
+            {
+                var none = true;
+                Assert.Equal("4b825dc642cb6eb9a060e54bf8d69288fbee4904", (await cache.HashTreeAsync(new(path), (_, _) => none = false)).ToHexString());
+                Assert.True(none);
+            }
             File.Copy("../../../../.gitattributes", Path.Join(path, ".gitattributes"));
             File.Copy("../../../../.gitignore", Path.Join(path, ".gitignore"));
-            Assert.NotEqual("f0d3a70ceaa69fb70811f58254dc738e0f939eac", (await cache.HashTreeAsync(new(path))).ToHexString());
+            // changed
+            {
+                var none = true;
+                Assert.Equal("4b825dc642cb6eb9a060e54bf8d69288fbee4904", (await cache.HashTreeAsync(new(path), (_, _) => none = false)).ToHexString());
+                Assert.True(none);
+            }
             // fresh
-            Assert.Equal("f0d3a70ceaa69fb70811f58254dc738e0f939eac", (await cache.HashTreeAsync(new(path), true)).ToHexString());
+            {
+                Dictionary<ReadOnlyMemory<byte>, string> hashes = new(ByteROMEqualityComparer.Instance);
+                Assert.Equal("f0d3a70ceaa69fb70811f58254dc738e0f939eac", (await cache.HashTreeAsync(new(path), (fsi, h) => hashes[h] = fsi.Name, true)).ToHexString());
+                Assert.Equal(2, hashes.Count);
+                Assert.Equal(".gitattributes", hashes["1ff0c423042b46cb1d617b81efb715defbe8054d".ParseHex()]);
+                Assert.Equal(".gitignore", hashes["9491a2fda28342ab358eaf234e1afe0c07a53d62".ParseHex()]);
+            }
             // cache
-            Assert.Equal("f0d3a70ceaa69fb70811f58254dc738e0f939eac", (await cache.HashTreeAsync(new(path))).ToHexString());
+            {
+                var none = true;
+                Assert.Equal("f0d3a70ceaa69fb70811f58254dc738e0f939eac", (await cache.HashTreeAsync(new(path), (_, _) => none = false)).ToHexString());
+                Assert.True(none);
+            }
         }
         finally
         {

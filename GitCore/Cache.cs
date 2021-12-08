@@ -35,7 +35,7 @@ public interface ICache
 
     public Task<ReadOnlyMemory<byte>> HashBlobAsync(FileInfo file, bool fresh = false, CancellationToken cancellationToken = default);
 
-    public Task<ReadOnlyMemory<byte>> HashTreeAsync(DirectoryInfo directory, bool fresh = false, CancellationToken cancellationToken = default);
+    public Task<ReadOnlyMemory<byte>> HashTreeAsync(DirectoryInfo directory, Action<FileSystemInfo, ReadOnlyMemory<byte>>? progress = null, bool fresh = false, CancellationToken cancellationToken = default);
 }
 
 public sealed class NtfsCache : ICache
@@ -176,7 +176,7 @@ public sealed class NtfsCache : ICache
         }
     }
 
-    public async Task<ReadOnlyMemory<byte>> HashTreeAsync(DirectoryInfo directory, bool fresh = false, CancellationToken cancellationToken = default)
+    public async Task<ReadOnlyMemory<byte>> HashTreeAsync(DirectoryInfo directory, Action<FileSystemInfo, ReadOnlyMemory<byte>>? progress = null, bool fresh = false, CancellationToken cancellationToken = default)
     {
         var path = directory.FullName + _suffix;
         if (!fresh)
@@ -202,11 +202,19 @@ public sealed class NtfsCache : ICache
                     {
                         case FileInfo f:
                             segments.Push(Encoding.UTF8.GetBytes($"100644 {f.Name}\0"));
-                            segments.Push(await HashBlobAsync(f, fresh, cancellationToken));
+                            {
+                                var h = await HashBlobAsync(f, fresh, cancellationToken);
+                                progress?.Invoke(f, h);
+                                segments.Push(h);
+                            }
                             break;
                         case DirectoryInfo d:
                             segments.Push(Encoding.UTF8.GetBytes($"40000 {d.Name}\0"));
-                            segments.Push(await HashTreeAsync(d, fresh, cancellationToken));
+                            {
+                                var h = await HashTreeAsync(d, progress, fresh, cancellationToken);
+                                progress?.Invoke(d, h);
+                                segments.Push(h);
+                            }
                             break;
                         default:
                             throw new NotSupportedException("Unexpected file system info");

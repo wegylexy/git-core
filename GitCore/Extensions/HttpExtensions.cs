@@ -31,16 +31,16 @@ public static class HttpExtensions
     public static Task<UploadPackResponse> PostUploadPackAsync(this HttpClient client, UploadPackRequest request, AuthenticationHeaderValue? authentication = null, string hashAlgorithm = nameof(SHA1), CancellationToken cancellationToken = default) =>
         UploadPackResponse.RequestAsync(client, request, authentication, hashAlgorithm, cancellationToken);
 
-    public static async Task<ReadOnlySequence<byte>> ReadAsSequenceAsync(this HttpContent content, int segmentSize = 81920, Action<long>? progress = null, CancellationToken cancellationToken = default)
+    public static async Task<ReadOnlySequence<byte>> ReadAsSequenceAsync(this HttpContent content, int segmentSize = 0x20000, Action<long>? progress = null, CancellationToken cancellationToken = default)
     {
         Stack<ReadOnlyMemory<byte>> segments = new();
         await using var stream = await content.ReadAsStreamAsync(cancellationToken);
         return await stream.ToSequenceAsync(segmentSize, progress, cancellationToken);
     }
 
-    public static async Task<Stream> ReadAsStreamAsync(this HttpContent content, int segmentSize = 81920, Action<long>? progress = null, CancellationToken cancellationToken = default) =>
+    public static async Task<Stream> ReadAsStreamAsync(this HttpContent content, int segmentSize = 0x20000, Action<long>? progress = null, CancellationToken cancellationToken = default) =>
         new SequenceStream(await content.ReadAsSequenceAsync(segmentSize, progress, cancellationToken));
 
-    public static async Task<ZipArchive> ReadAsZipAsync(this HttpContent content, bool leaveOpen = false, Encoding? entryNameEncoding = null, Action<long>? progress = null, int segmentSize = 81920, CancellationToken cancellationToken = default) =>
+    public static async Task<ZipArchive> ReadAsZipAsync(this HttpContent content, bool leaveOpen = false, Encoding? entryNameEncoding = null, Action<long>? progress = null, int segmentSize = 0x20000, CancellationToken cancellationToken = default) =>
         new(await content.ReadAsStreamAsync(segmentSize, progress, cancellationToken), ZipArchiveMode.Read, leaveOpen, entryNameEncoding);
 }
