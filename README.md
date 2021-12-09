@@ -11,8 +11,8 @@ This project begins with retrieving a Git pack using only efficient .NET 6.0 API
 ```cs
 using FlyByWireless.GitCore;
 
-using HttpClient client = new();
-var upa = client.GetUploadPackAsync(new("https://github.com/wegylexy/git-core.git/"));
+using HttpClient client = new(new AuthorizingHttpClientHandler());
+var upa = client.GetUploadPackAsync(new("https://user:token@github.com/wegylexy/git-core.git/"));
 await foreach (var p in upa)
 {
     var r = p.Key;
@@ -30,8 +30,9 @@ await foreach (var p in upa)
 ## Example: shallow-fetch of a tree
 
 Git remote capable of `allow-reachable-sha1-in-want`, `shallow`, and `object-format=sha1`:
-- `https://github.com/wegylexy/git-core.git/`  
-  (trailing `/` is required)
+- Remote URL: `https://github.com/wegylexy/git-core.git/` (trailing `/` is required)
+- Username: `user`
+- Token: `token`
 
 Local:
 - `tree f0d3a70ceaa69fb70811f58254dc738e0f939eac`
@@ -55,8 +56,8 @@ Default capabilities includes `thin-pack`. The 2 blobs that local already has wi
 ```cs
 using FlyByWireless.GitCore;
 
-using HttpClient client = new();
-using var response = await client.PostUploadPackAsync(new("https://github.com/wegylexy/git-core.git/"),
+using HttpClient client = new(new AuthorizingHttpClientHandler());
+using var response = await client.PostUploadPackAsync(new("https://user:token@github.com/wegylexy/git-core.git/"),
     new
     (
         want: new ReadOnlyMemory<byte>[] { "d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d".ParseHex() },

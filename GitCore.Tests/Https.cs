@@ -6,8 +6,6 @@ namespace FlyByWireless.GitCore.Tests;
 
 public class Https
 {
-    const string AuthTestUrl = "https://authenticationtest.com/HTTPAuth/";
-
     private readonly ITestOutputHelper _output;
 
     public Https(ITestOutputHelper output) => _output = output;
@@ -17,7 +15,7 @@ public class Https
     {
         using HttpClient hc = new()
         {
-            BaseAddress = new Uri(AuthTestUrl)
+            BaseAddress = new Uri("https://authenticationtest.com/HTTPAuth/")
         };
         using var r = await hc.GetAsync(null as Uri);
         _output.WriteLine(r.StatusCode.ToString());
@@ -29,9 +27,21 @@ public class Https
     {
         using HttpClient hc = new()
         {
-            BaseAddress = new Uri(AuthTestUrl)
+            BaseAddress = new Uri("https://authenticationtest.com/HTTPAuth/")
         };
-        hc.Authenticate("user", "pass");
+        hc.Authorize("user", "pass");
+        using var r = await hc.GetAsync(null as Uri);
+        _output.WriteLine(r.StatusCode.ToString());
+        Assert.True(r.IsSuccessStatusCode);
+    }
+
+    [Fact]
+    public async Task UserInfoAsync()
+    {
+        using HttpClient hc = new(new AuthorizingHttpClientHandler())
+        {
+            BaseAddress = new Uri("https://user:pass@authenticationtest.com/HTTPAuth/")
+        };
         using var r = await hc.GetAsync(null as Uri);
         _output.WriteLine(r.StatusCode.ToString());
         Assert.True(r.IsSuccessStatusCode);
