@@ -62,11 +62,8 @@ public class Https
     [Fact]
     public async Task UploadPackAdvertisementAsync()
     {
-        using HttpClient hc = new()
-        {
-            BaseAddress = new("https://github.com/wegylexy/git-core.git/")
-        };
-        var upa = await hc.GetUploadPackAsync();
+        using HttpClient hc = new();
+        var upa = await hc.GetUploadPackAsync(new("https://github.com/wegylexy/git-core.git/"));
         var e = upa.GetAsyncEnumerator();
         await e.MoveNextAsync();
         _output.WriteLine(string.Join(' ', upa.Capabilities));
@@ -115,22 +112,13 @@ public class Https
     public async Task UploadPackAsync(string leafHex)
     {
         ReadOnlyMemory<byte> leaf = leafHex.ParseHex(), have = "985f7c92b19e5de0f28fefb96a9d004d6c4f4841".ParseHex();
-        using HttpClient hc = new()
-        {
-            BaseAddress = new("https://github.com/wegylexy/git-core.git/")
-        };
-        using var r = await hc.PostUploadPackAsync(new(
-            want: new[] { leaf },
-            depth: 1,
-            have: new[] { have }
-        )
-        {
-            Capabilities =
+        using HttpClient hc = new();
+        using var r = await hc.PostUploadPackAsync(new("https://github.com/wegylexy/git-core.git/"),
+            new(want: new[] { leaf }, depth: 1, have: new[] { have })
             {
-                "multi_ack",
-                "include-tag"
+                Capabilities = { "multi_ack", "include-tag" }
             }
-        });
+        );
         if (r.Acknowledged.Any())
         {
             foreach (var h in r.Acknowledged)

@@ -7,14 +7,14 @@ namespace FlyByWireless.GitCore;
 
 public sealed class UploadPackResponse : IDisposable
 {
-    internal static async Task<UploadPackResponse> RequestAsync(HttpClient client, UploadPackRequest request, AuthenticationHeaderValue? authentication = null, string hashAlgorithm = nameof(SHA1), CancellationToken cancellationToken = default)
+    internal static async Task<UploadPackResponse> RequestAsync(HttpClient client, Uri repo, UploadPackRequest request, AuthenticationHeaderValue? authentication = null, string hashAlgorithm = nameof(SHA1), CancellationToken cancellationToken = default)
     {
         int hashSize;
         {
             using var ha = HashAlgorithm.Create(hashAlgorithm)!;
             hashSize = ha.HashSize / 8;
         }
-        var response = await client.SendAsync(new(HttpMethod.Post, "git-upload-pack")
+        var response = await client.SendAsync(new(HttpMethod.Post, new Uri(repo, "git-upload-pack"))
         {
             Headers = { Authorization = authentication },
             Content = request

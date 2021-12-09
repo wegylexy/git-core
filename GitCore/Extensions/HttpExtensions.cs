@@ -22,14 +22,14 @@ public static class HttpExtensions
         return message;
     }
 
-    public static async Task<UploadPackAdvertisement> GetUploadPackAsync(this HttpClient client, AuthenticationHeaderValue? authentication = null, HttpCompletionOption completionOption = HttpCompletionOption.ResponseHeadersRead, CancellationToken cancellationToken = default) =>
-        new(await client.SendAsync(new(HttpMethod.Get, "info/refs?service=git-upload-pack")
+    public static async Task<UploadPackAdvertisement> GetUploadPackAsync(this HttpClient client, Uri repo, AuthenticationHeaderValue? authentication = null, HttpCompletionOption completionOption = HttpCompletionOption.ResponseHeadersRead, CancellationToken cancellationToken = default) =>
+        new(await client.SendAsync(new(HttpMethod.Get, new Uri(repo, "info/refs?service=git-upload-pack"))
         {
             Headers = { Authorization = authentication }
         }, completionOption, cancellationToken));
 
-    public static Task<UploadPackResponse> PostUploadPackAsync(this HttpClient client, UploadPackRequest request, AuthenticationHeaderValue? authentication = null, string hashAlgorithm = nameof(SHA1), CancellationToken cancellationToken = default) =>
-        UploadPackResponse.RequestAsync(client, request, authentication, hashAlgorithm, cancellationToken);
+    public static Task<UploadPackResponse> PostUploadPackAsync(this HttpClient client, Uri repo, UploadPackRequest request, AuthenticationHeaderValue? authentication = null, string hashAlgorithm = nameof(SHA1), CancellationToken cancellationToken = default) =>
+        UploadPackResponse.RequestAsync(client, repo, request, authentication, hashAlgorithm, cancellationToken);
 
     public static async Task<ReadOnlySequence<byte>> ReadAsSequenceAsync(this HttpContent content, int segmentSize = 0x20000, Action<long>? progress = null, CancellationToken cancellationToken = default)
     {

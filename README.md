@@ -11,11 +11,8 @@ This project begins with retrieving a Git pack using only efficient .NET 6.0 API
 ```cs
 using FlyByWireless.GitCore;
 
-using HttpClient client = new()
-{
-    BaseAddress = new("https://github.com/wegylexy/git-core.git/")
-};
-var upa = client.GetUploadPackAsync();
+using HttpClient client = new();
+var upa = client.GetUploadPackAsync(new("https://github.com/wegylexy/git-core.git/"));
 await foreach (var p in upa)
 {
     var r = p.Key;
@@ -58,27 +55,18 @@ Default capabilities includes `thin-pack`. The 2 blobs that local already has wi
 ```cs
 using FlyByWireless.GitCore;
 
-using HttpClient client = new()
-{
-    BaseAddress = new("https://github.com/wegylexy/git-core.git/")
-};
-using var response = await client.PostUploadPackAsync(new(
-    want: new ReadOnlyMemory<byte>[]
+using HttpClient client = new();
+using var response = await client.PostUploadPackAsync(new("https://github.com/wegylexy/git-core.git/"),
+    new
+    (
+        want: new ReadOnlyMemory<byte>[] { "d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d".ParseHex() },
+        depth: 1,
+        have: new ReadOnlyMemory<byte>[] { "f0d3a70ceaa69fb70811f58254dc738e0f939eac".ParseHex() }
+    )
     {
-        "d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d".ParseHex()
-    },
-    depth: 1,
-    have: new ReadOnlyMemory<byte>[]
-    {
-        "f0d3a70ceaa69fb70811f58254dc738e0f939eac".ParseHex()
+        Capabilities = { "include-tag" }
     }
-)
-{
-    Capabilities =
-    {
-        "include-tag"
-    }
-});
+);
 await foreach (var uo in response.Pack) // for each unpacked object
 {
     var co = uo; // delta will re-assign current object
