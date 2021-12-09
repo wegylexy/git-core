@@ -1,4 +1,5 @@
-﻿using System.IO.Compression;
+﻿using System.Buffers;
+using System.IO.Compression;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -182,17 +183,36 @@ public class Https
                     }
                     break;
                 case ObjectType.ReferenceDelta:
-                    if (os.TryGetValue(co.Hash, out var b))
+                    if (!os.TryGetValue(co.Hash, out var b))
                     {
-                        co = co.Delta(b);
-                        _output.WriteLine(hs.Contains(co.Hash) ? "\t(seen above)" : "\t(unseen above)");
-                        goto Triage;
+                        ReadOnlySequence<byte> sequence;
+                        {
+                            using var fs = File.OpenRead($"../../../../.git/objects/{co.Hash[..1].ToHexString()}/{co.Hash[1..].ToHexString()}");
+                            using ZLibStream z = new(fs, CompressionMode.Decompress);
+                            sequence = await z.ToSequenceAsync();
+                        }
+                        var start = 0;
+                        foreach (var s in sequence)
+                        {
+                            var i = s.Span.IndexOf<byte>(0);
+                            if (i >= 0)
+                            {
+                                start += i + 1;
+                                break;
+                            }
+                            start += s.Length;
+                        }
+                        b = new((int)sequence.FirstSpan[0] switch
+                        {
+                            'b' => ObjectType.Blob,
+                            't' => sequence.Slice(1).FirstSpan[0] == 'r' ? ObjectType.Tree : ObjectType.Tag,
+                            'c' => ObjectType.Tree,
+                            _ => throw new InvalidDataException("Unexpected type")
+                        }, sequence.Slice(start), co.Hash);
                     }
-                    else
-                    {
-                        _output.WriteLine("\t(not in pack)");
-                    }
-                    break;
+                    co = co.Delta(b);
+                    _output.WriteLine(hs.Contains(co.Hash) ? "\t(seen above)" : "\t(unseen above)");
+                    goto Triage;
                 case ObjectType.Commit:
                     {
                         var c = co.ToCommitContent();

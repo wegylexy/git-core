@@ -126,8 +126,14 @@ public static class ByteExtensions
         }
     }
 
-    public static async Task<ReadOnlySequence<byte>> ToSequenceAsync(this Stream stream, int segmentSize = 81920, Action<long>? progress = null, CancellationToken cancellationToken = default)
+    public static async Task<ReadOnlySequence<byte>> ToSequenceAsync(this Stream stream, int segmentSize = 0x2000, Action<long>? progress = null, CancellationToken cancellationToken = default)
     {
+        {
+            if (stream.CanSeek && stream.Length is long length && length < segmentSize)
+            {
+                segmentSize = (int)length;
+            }
+        }
         Stack<ReadOnlyMemory<byte>> segments = new();
         var runningIndex = 0L;
         for (; ; )

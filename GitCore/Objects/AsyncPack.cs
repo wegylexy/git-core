@@ -73,7 +73,7 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
     public async IAsyncEnumerator<UnpackedObject> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
         var hashSize = _hs.HashSize / 8;
-        var buffer = GC.AllocateUninitializedArray<byte>(Math.Max(hashSize, 20));
+        var buffer = GC.AllocateUninitializedArray<byte>(hashSize);
         {
             // Enumerates
             var entries = await CountAsync(cancellationToken);
@@ -89,6 +89,10 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
                 }
                 await ReadByteAsync();
                 long size = buffer[0];
+                if (size == 0)
+                {
+                    throw new InvalidDataException("Unexpected 0");
+                }
                 var type = (ObjectType)((size >> 4) & 0b111);
                 size &= 0b1111;
                 for (var s = 4; (buffer[0] & 0b10000000) != 0; s += 7)
@@ -101,9 +105,9 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
                     case ObjectType.OffsetDelta:
                         throw new NotSupportedException("Offset delta not supported");
                     case ObjectType.ReferenceDelta:
-                        for (var read = 0; read < 20;)
+                        for (var read = 0; read < hashSize;)
                         {
-                            var r = await _hs.ReadAsync(buffer.AsMemory(read, 20 - read), cancellationToken);
+                            var r = await _hs.ReadAsync(buffer.AsMemory(read, hashSize - read), cancellationToken);
                             if (r == 0)
                             {
                                 throw new EndOfStreamException();

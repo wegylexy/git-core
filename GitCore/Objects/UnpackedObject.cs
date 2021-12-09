@@ -80,36 +80,43 @@ public sealed record class UnpackedObject(ObjectType Type, ReadOnlySequence<byte
         return new(Data.Length, new SequenceStream(Data), hashAlgorithm);
     }
 
-    public UnpackedObject Delta(UnpackedObject baseObject, string hashAlgorithm = nameof(SHA1), int preferredBufferSize = 4096)
+    internal long DeltaSize(out long baseSize, out long deltaOffset)
     {
+        deltaOffset = baseSize = 0L;
         if (Type is not (ObjectType.OffsetDelta or ObjectType.ReferenceDelta))
         {
             throw new InvalidOperationException("Object is not delta");
         }
-        Stack<ReadOnlyMemory<byte>> segments = new();
-        long i = 0L, baseSize = 0L, derivedSize = 0L, written = 0L;
+        var derivedSize = 0L;
         for (var s = 0; ; s += 7)
         {
-            var b = Data.Slice(i++, 1).FirstSpan[0];
+            var b = Data.Slice(deltaOffset++, 1).FirstSpan[0];
             baseSize |= (b & 0b01111111L) << s;
             if ((b & 0b10000000) == 0)
             {
                 break;
             }
         }
-        if (baseObject.Data.Length != baseSize)
-        {
-            throw new InvalidOperationException("Base stream size mismatch");
-        }
         for (var s = 0; ; s += 7)
         {
-            var b = Data.Slice(i++, 1).FirstSpan[0];
+            var b = Data.Slice(deltaOffset++, 1).FirstSpan[0];
             derivedSize |= (b & 0b01111111L) << s;
             if ((b & 0b10000000) == 0)
             {
-                break;
+                return derivedSize;
             }
         }
+    }
+
+    public UnpackedObject Delta(UnpackedObject baseObject, string hashAlgorithm = nameof(SHA1), int preferredBufferSize = 4096)
+    {
+        var derivedSize = DeltaSize(out var baseSize, out var i);
+        if (baseObject.Data.Length != baseSize)
+        {
+            throw new InvalidDataException($"Expected base stream size of {baseSize} instead of {baseObject.Data.Length}");
+        }
+        Stack<ReadOnlyMemory<byte>> segments = new();
+        var written = 0L;
         using var ha = HashAlgorithm.Create(hashAlgorithm)!;
         var header = HeaderBytes(baseObject.Type, derivedSize);
         ha.TransformBlock(header, 0, header.Length, null, 0);
@@ -190,7 +197,7 @@ public sealed record class UnpackedObject(ObjectType Type, ReadOnlySequence<byte
         }
         if (written != derivedSize)
         {
-            throw new InvalidDataException("Invalid delta");
+            throw new InvalidDataException($"Expected derived size of {derivedSize} instead of {written}");
         }
         ReadOnlySequence<byte> data;
         if (segments.TryPop(out var last))
