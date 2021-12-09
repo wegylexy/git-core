@@ -130,8 +130,11 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
                                     read += r;
                                 }
                                 var i = zls.GetInputBuffer();
-                                _hs.Unread(i.Length);
-                                _ = _ss.Push(i);
+                                if (i.Length > 0)
+                                {
+                                    _hs.Unread(i.Length);
+                                    _ = _ss.Push(i.ToArray());
+                                }
                             }
                             var runningIndex = size;
                             var last = segments.Pop();
@@ -166,9 +169,12 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
                                         ha.TransformBlock(b, 0, r, null, 0);
                                         read += r;
                                     }
-                                    var i = zls.GetInputBuffer();
-                                    _hs.Unread(i.Length);
-                                    _ = _ss.Push(i);
+                                    var i = zls.GetInputBuffer().ToArray();
+                                    if (i.Length > 0)
+                                    {
+                                        _hs.Unread(i.Length);
+                                        _ = _ss.Push(i.ToArray());
+                                    }
                                 }
                                 var runningIndex = size;
                                 var last = segments.Pop();
