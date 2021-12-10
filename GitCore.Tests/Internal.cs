@@ -1,7 +1,4 @@
-﻿using System.Buffers;
-using System.IO.Compression;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+﻿using System.IO.Compression;
 using System.Security.Cryptography;
 using Xunit;
 
@@ -40,48 +37,6 @@ public class Internal
             Assert.Equal(expected, hs.Hash.ToArray());
         }
     }
-
-    [Fact]
-    public async Task SequenceAsync()
-    {
-        var expected = Guid.NewGuid().ToByteArray();
-        SequenceStream ss = new(new(expected));
-        {
-            var actual = new byte[ss.Length];
-            ss.Read(actual);
-            Assert.Equal(expected, actual);
-        }
-        ss.Position = 0;
-        {
-            var s = await ss.ToSequenceAsync(4);
-            var actual = new byte[s.Length];
-            s.Slice(0).CopyTo(actual);
-            Assert.Equal(expected, actual);
-        }
-    }
-
-    [Fact]
-    public void Stack()
-    {
-        Span<Guid> expected = stackalloc Guid[16];
-        for (var i = 0; i < expected.Length; ++i)
-        {
-            expected[i] = Guid.NewGuid();
-        }
-        Span<byte> actual = stackalloc byte[Unsafe.SizeOf<Guid>() * expected.Length];
-        for (var chunkSize = 1; chunkSize < actual.Length; ++chunkSize)
-        {
-            actual.Clear();
-            using StackStream ss = new(new MemoryStream(expected[^1].ToByteArray()));
-            for (var i = expected.Length - 1; i-- > 0;)
-            {
-                ss.Push(expected[i].ToByteArray());
-            }
-            for (var read = 0; read < actual.Length; read += ss.Read(actual[read..Math.Min(read + chunkSize, actual.Length)])) { }
-            Assert.True(actual.SequenceEqual(MemoryMarshal.Cast<Guid, byte>(expected)));
-        }
-    }
-
 
     [Fact]
     public void Inflate()

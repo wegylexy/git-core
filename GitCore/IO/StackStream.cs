@@ -2,14 +2,14 @@
 
 internal sealed class StackStream : Stream
 {
-    readonly Stack<ReadOnlyMemory<byte>> _stack = new();
-    readonly Stream _stream;
-    readonly bool _leaveOpen;
+    private readonly Stack<ReadOnlyMemory<byte>> _stack = new();
+    private readonly Stream _stream;
+    private readonly bool _leaveOpen;
 
     public override bool CanRead => _stack.Count > 0 || _stream.CanRead;
     public override bool CanSeek => false;
     public override bool CanWrite => false;
-    public override long Length => _stream.Length + _stack.Sum(m => m.Length);
+    public override long Length => throw new InvalidOperationException();
     public override long Position
     {
         get => throw new InvalidOperationException();

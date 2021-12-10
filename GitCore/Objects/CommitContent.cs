@@ -8,7 +8,13 @@ public sealed record class CommitContent(ReadOnlyMemory<byte> Tree, User Author,
 {
     public static async Task<CommitContent> UncompressAsync(string path, CancellationToken cancellationToken = default)
     {
-        using var file = File.OpenRead(path);
+        using var file = File.Open(path, new FileStreamOptions
+        {
+            Access = FileAccess.Read,
+            Mode = FileMode.Open,
+            Options = FileOptions.Asynchronous,
+            Share = FileShare.Read
+        });
         using ZLibStream zls = new(file, CompressionMode.Decompress);
         var size = 0;
         {

@@ -70,7 +70,14 @@ public sealed class NtfsCache : ICache
         }
         {
             byte[] hash;
-            using var data = File.OpenRead(file.FullName);
+            using var data = File.Open(file.FullName, new FileStreamOptions
+            {
+                Access = FileAccess.Read,
+                BufferSize = 0x2000,
+                Mode = FileMode.Open,
+                Options = FileOptions.Asynchronous,
+                Share = FileShare.Read
+            });
             {
                 var buffer = GC.AllocateUninitializedArray<byte>(8000);
                 var binary = false;

@@ -8,7 +8,13 @@ public sealed record class TagContent(ReadOnlyMemory<byte> Object, ObjectType Ty
 {
     public static async Task<TagContent> UncompressAsync(string path, CancellationToken cancellationToken = default)
     {
-        using var file = File.OpenRead(path);
+        using var file = File.Open(path, new FileStreamOptions
+        {
+            Access = FileAccess.Read,
+            Mode = FileMode.Open,
+            Options = FileOptions.Asynchronous,
+            Share = FileShare.Read
+        });
         using ZLibStream zls = new(file, CompressionMode.Decompress);
         var size = 0;
         {

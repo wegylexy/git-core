@@ -31,9 +31,16 @@ public readonly record struct TreeEntry(int Mode, string Path, ReadOnlyMemory<by
 
 public sealed class AsyncTree : IAsyncEnumerable<TreeEntry>
 {
-    public static async IAsyncEnumerable<TreeEntry> EnumerateAsync(string path, bool recusrive = false, string hashAlgorithm = nameof(SHA1), [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public static async IAsyncEnumerable<TreeEntry> EnumerateAsync(string path, bool recusrive = false, string hashAlgorithm = nameof(SHA1), int bufferSize = 4096, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        using var file = File.OpenRead(path);
+        using var file = File.Open(path, new FileStreamOptions
+        {
+            Access = FileAccess.Read,
+            BufferSize = bufferSize,
+            Mode = FileMode.Open,
+            Options = FileOptions.Asynchronous,
+            Share = FileShare.Read
+        });
         using ZLibStream zls = new(file, CompressionMode.Decompress);
         var size = 0;
         {
@@ -67,7 +74,7 @@ public sealed class AsyncTree : IAsyncEnumerable<TreeEntry>
             if (recusrive && e.Type == TreeEntryType.Tree)
             {
                 var hex = e.Hash.ToHexString();
-                await foreach (var f in EnumerateAsync(Path.Join(path, "../..", hex.AsSpan(0, 2), hex.AsSpan(2)), true, hashAlgorithm, cancellationToken))
+                await foreach (var f in EnumerateAsync(Path.Join(path, "../..", hex.AsSpan(0, 2), hex.AsSpan(2)), true, hashAlgorithm, bufferSize, cancellationToken))
                 {
                     yield return f with
                     {
