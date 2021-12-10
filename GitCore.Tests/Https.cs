@@ -116,16 +116,14 @@ public class Https
     }
 
     [Theory]
-    [InlineData("f0d3a70ceaa69fb70811f58254dc738e0f939eac")]
-    //[InlineData("0e912ab6ea6efdcbee8ea7f3ed98623db44b55d0")]
-    [InlineData("e952cd0312c660f7443e323afea25bad5eeeb78c")]
-    //[InlineData("d56c74a8ae5d81ddfbebce18eea3c791fcea5e2d")]
-    public async Task UploadPackAsync(string leafHex)
+    [InlineData("../../../..", "https://github.com/wegylexy/git-core.git/", "f0d3a70ceaa69fb70811f58254dc738e0f939eac", "1ff0c423042b46cb1d617b81efb715defbe8054d")]
+    [InlineData("../../../..", "https://github.com/wegylexy/git-core.git/", "e952cd0312c660f7443e323afea25bad5eeeb78c", "985f7c92b19e5de0f28fefb96a9d004d6c4f4841")]
+    public async Task UploadPackAsync(string local, string remote, string wantHex, string? haveHex = null)
     {
-        ReadOnlyMemory<byte> leaf = leafHex.ParseHex(), have = "985f7c92b19e5de0f28fefb96a9d004d6c4f4841".ParseHex();
-        using HttpClient hc = new();
-        using var r = await hc.PostUploadPackAsync(new("https://github.com/wegylexy/git-core.git/"),
-            new(want: new[] { leaf }, depth: 1, have: new[] { have })
+        ReadOnlyMemory<byte> want = wantHex.ParseHex(), have = haveHex?.ParseHex();
+        using HttpClient hc = new(new AuthorizingHttpClientHandler());
+        using var r = await hc.PostUploadPackAsync(new(remote),
+            new(want: new[] { want }, depth: 1, have: have.IsEmpty ? null : new[] { have })
             {
                 Capabilities = { "multi_ack", "include-tag" }
             }
@@ -184,35 +182,37 @@ public class Https
                     }
                     break;
                 case ObjectType.ReferenceDelta:
-                    if (!os.TryGetValue(co.Hash, out var b))
                     {
-                        ReadOnlySequence<byte> sequence;
+                        if (!os.TryGetValue(co.Hash, out var b))
                         {
-                            using var fs = File.OpenRead($"../../../../.git/objects/{co.Hash[..1].ToHexString()}/{co.Hash[1..].ToHexString()}");
-                            using ZLibStream z = new(fs, CompressionMode.Decompress);
-                            sequence = await z.ToSequenceAsync();
-                        }
-                        var start = 0;
-                        foreach (var s in sequence)
-                        {
-                            var i = s.Span.IndexOf<byte>(0);
-                            if (i >= 0)
+                            ReadOnlySequence<byte> sequence;
                             {
-                                start += i + 1;
-                                break;
+                                using var fs = File.OpenRead(Path.Join(local, ".git/objects", co.Hash[..1].ToHexString(), co.Hash[1..].ToHexString()));
+                                using ZLibStream z = new(fs, CompressionMode.Decompress);
+                                sequence = await z.ToSequenceAsync();
                             }
-                            start += s.Length;
+                            var start = 0;
+                            foreach (var s in sequence)
+                            {
+                                var i = s.Span.IndexOf<byte>(0);
+                                if (i >= 0)
+                                {
+                                    start += i + 1;
+                                    break;
+                                }
+                                start += s.Length;
+                            }
+                            b = new((int)sequence.FirstSpan[0] switch
+                            {
+                                'b' => ObjectType.Blob,
+                                't' => sequence.Slice(1).FirstSpan[0] == 'r' ? ObjectType.Tree : ObjectType.Tag,
+                                'c' => ObjectType.Tree,
+                                _ => throw new InvalidDataException("Unexpected type")
+                            }, sequence.Slice(start), co.Hash);
                         }
-                        b = new((int)sequence.FirstSpan[0] switch
-                        {
-                            'b' => ObjectType.Blob,
-                            't' => sequence.Slice(1).FirstSpan[0] == 'r' ? ObjectType.Tree : ObjectType.Tag,
-                            'c' => ObjectType.Tree,
-                            _ => throw new InvalidDataException("Unexpected type")
-                        }, sequence.Slice(start), co.Hash);
+                        co = co.Delta(b); // TODO: test case for 64KB https://github.com/git/git/blob/master/Documentation/technical/pack-format.txt#L128-L131
+                        Assert.Contains(co.Hash, hs);
                     }
-                    co = co.Delta(b); // TODO: test case for 64KB https://github.com/git/git/blob/master/Documentation/technical/pack-format.txt#L128-L131
-                    Assert.Contains(co.Hash, hs);
                     goto Triage;
                 case ObjectType.Commit:
                     {
@@ -235,6 +235,6 @@ public class Https
                     throw new NotSupportedException("Unexpected type");
             }
         }
-        Assert.Contains(leaf, (IDictionary<ReadOnlyMemory<byte>, UnpackedObject>)os); // may fail due to external reference
+        Assert.Contains(want, (IDictionary<ReadOnlyMemory<byte>, UnpackedObject>)os); // may fail due to external reference
     }
 }
