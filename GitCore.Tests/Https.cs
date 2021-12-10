@@ -159,6 +159,11 @@ public class Https
             if (derived)
             {
                 _output.WriteLine("\t" + co.ToString());
+                //Assert.Contains(co.Hash, hs);
+                if (!hs.Contains(co.Hash))
+                {
+                    _output.WriteLine("\t(unexpected)");
+                }
             }
             else
             {
@@ -211,7 +216,6 @@ public class Https
                             }, sequence.Slice(start), co.Hash);
                         }
                         co = co.Delta(b); // TODO: test case for 64KB https://github.com/git/git/blob/master/Documentation/technical/pack-format.txt#L128-L131
-                        Assert.Contains(co.Hash, hs);
                     }
                     goto Triage;
                 case ObjectType.Commit:

@@ -12,7 +12,7 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
 
     private readonly HashStream _hs;
 
-    private int _MaxChunkSize = 16384;
+    private int _MaxChunkSize = 0x4000;
     public int MaxChunkSize
     {
         get => _MaxChunkSize;
@@ -152,18 +152,17 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
                             var header = UnpackedObject.HeaderBytes(type, size);
                             ha.Initialize();
                             ha.TransformBlock(header, 0, header.Length, null, 0);
-                            if (size > 0)
                             {
                                 Stack<ReadOnlyMemory<byte>> segments = new();
                                 {
                                     using ZLibStream zls = new(_hs, CompressionMode.Decompress, true);
-                                    for (var read = 0; read < size;)
+                                    for (var read = 0; ;)
                                     {
-                                        var b = GC.AllocateUninitializedArray<byte>((int)Math.Min(size - read, _MaxChunkSize));
+                                        var b = GC.AllocateUninitializedArray<byte>(_MaxChunkSize);
                                         var r = await zls.ReadAsync(b, cancellationToken);
                                         if (r == 0)
                                         {
-                                            throw new EndOfStreamException();
+                                            break;
                                         }
                                         segments.Push(b.AsMemory(0, r));
                                         ha.TransformBlock(b, 0, r, null, 0);
@@ -176,18 +175,25 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
                                         _ = _ss.Push(i);
                                     }
                                 }
-                                var runningIndex = size;
-                                var last = segments.Pop();
-                                BytesSegment end = new(last, null, runningIndex -= last.Length), start = end;
-                                while (segments.TryPop(out var previous))
+                                if (segments.Count > 0)
                                 {
-                                    start = new(previous, start, runningIndex -= previous.Length);
+                                    var runningIndex = size;
+                                    var last = segments.Pop();
+                                    BytesSegment end = new(last, null, runningIndex -= last.Length), start = end;
+                                    while (segments.TryPop(out var previous))
+                                    {
+                                        start = new(previous, start, runningIndex -= previous.Length);
+                                    }
+                                    data = new(start, 0, end, end.Memory.Length);
                                 }
-                                data = new(start, 0, end, end.Memory.Length);
-                            }
-                            else
-                            {
-                                data = ReadOnlySequence<byte>.Empty;
+                                else
+                                {
+                                    data = default;
+                                }
+                                if (data.Length != size)
+                                {
+                                    throw new InvalidDataException($"Expected {size} bytes instead of {data.Length}");
+                                }
                             }
                             yield return new(type, data, ha.ComputeHash(Array.Empty<byte>()));
                         }
@@ -208,7 +214,7 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
         _hs.ComputeHash();
         if (!buffer.AsSpan(0, hashSize).SequenceEqual(_hs.Hash.Span))
         {
-            throw new InvalidDataException("Checksum fail");
+            throw new InvalidDataException("Checksum failed");
         }
     }
 }
