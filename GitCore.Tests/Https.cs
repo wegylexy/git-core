@@ -210,7 +210,7 @@ public class Https
                             _ => throw new InvalidDataException("Unexpected type")
                         }, sequence.Slice(start), co.Hash);
                     }
-                    co = co.Delta(b);
+                    co = co.Delta(b); // TODO: test case for 64KB https://github.com/git/git/blob/master/Documentation/technical/pack-format.txt#L128-L131
                     _output.WriteLine(hs.Contains(co.Hash) ? "\t(seen above)" : "\t(unseen above)");
                     goto Triage;
                 case ObjectType.Commit:

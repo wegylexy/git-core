@@ -133,7 +133,7 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
                                 if (i.Length > 0)
                                 {
                                     _hs.Unread(i.Length);
-                                    _ = _ss.Push(i.ToArray());
+                                    _ = _ss.Push(i);
                                 }
                             }
                             var runningIndex = size;
@@ -169,11 +169,11 @@ public sealed class AsyncPack : IAsyncEnumerable<UnpackedObject>
                                         ha.TransformBlock(b, 0, r, null, 0);
                                         read += r;
                                     }
-                                    var i = zls.GetInputBuffer().ToArray();
+                                    var i = zls.GetInputBuffer();
                                     if (i.Length > 0)
                                     {
                                         _hs.Unread(i.Length);
-                                        _ = _ss.Push(i.ToArray());
+                                        _ = _ss.Push(i);
                                     }
                                 }
                                 var runningIndex = size;

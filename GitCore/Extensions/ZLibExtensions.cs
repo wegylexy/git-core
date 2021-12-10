@@ -23,5 +23,5 @@ public static class ZLibExtensions
     }
 
     internal static ReadOnlyMemory<byte> GetInputBuffer(this ZLibStream stream) =>
-        _getInputBuffer(stream);
+        _getInputBuffer(stream).ToArray();
 }

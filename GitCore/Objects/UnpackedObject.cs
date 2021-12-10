@@ -170,6 +170,10 @@ public sealed record class UnpackedObject(ObjectType Type, ReadOnlySequence<byte
                         {
                             size |= Data.Slice(i++, 1).FirstSpan[0] << 16;
                         }
+                        if (size == 0)
+                        {
+                            size = 0x10000;
+                        }
                         source = baseObject.Data.Slice(offset, size);
                     }
                     foreach (var s in source)
