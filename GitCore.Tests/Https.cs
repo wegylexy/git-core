@@ -157,13 +157,14 @@ public class Https
             var co = o;
         Triage:
             Assert.False(co.Hash.Span.SequenceEqual(have.Span));
-            if (co == o)
+            var derived = co != o;
+            if (derived)
             {
-                _output.WriteLine(co.ToString());
+                _output.WriteLine("\t" + co.ToString());
             }
             else
             {
-                _output.WriteLine("\t" + co.ToString());
+                _output.WriteLine(co.ToString());
             }
             if (!co.IsDelta)
             {
@@ -178,7 +179,7 @@ public class Https
                     ts.Add(co.Hash);
                     await foreach (var e in co.AsTree())
                     {
-                        _output.WriteLine("\t" + e.ToString());
+                        _output.WriteLine((derived ? "\t\t" : "\t") + e.ToString());
                         hs.Add(e.Hash);
                     }
                     break;
@@ -211,11 +212,12 @@ public class Https
                         }, sequence.Slice(start), co.Hash);
                     }
                     co = co.Delta(b); // TODO: test case for 64KB https://github.com/git/git/blob/master/Documentation/technical/pack-format.txt#L128-L131
-                    _output.WriteLine(hs.Contains(co.Hash) ? "\t(seen above)" : "\t(unseen above)");
+                    Assert.Contains(co.Hash, hs);
                     goto Triage;
                 case ObjectType.Commit:
                     {
                         var c = co.ToCommitContent();
+                        hs.Add(c.Tree);
                         _output.WriteLine("\ttree " + c.Tree.ToHexString());
                         if (!c.Parent.IsEmpty)
                         {
