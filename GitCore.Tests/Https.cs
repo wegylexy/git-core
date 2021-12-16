@@ -118,6 +118,8 @@ public class Https
     [Theory]
     [InlineData("../../../..", "https://github.com/wegylexy/git-core.git/", "f0d3a70ceaa69fb70811f58254dc738e0f939eac", "1ff0c423042b46cb1d617b81efb715defbe8054d")]
     [InlineData("../../../..", "https://github.com/wegylexy/git-core.git/", "e952cd0312c660f7443e323afea25bad5eeeb78c", "985f7c92b19e5de0f28fefb96a9d004d6c4f4841")]
+    [InlineData(@"D:\repos\poscon\x-plane-models", "https://launcher:sqxusMr5dHRatzTRuxQP@gitlab.com/poscon/clients/pilot/x-plane-models.git/", "c2c4e1f3697301f3f780fd7352a0892d677cd281")]
+    [InlineData(@"D:\repos\poscon\x-plane-models", "https://launcher:sqxusMr5dHRatzTRuxQP@gitlab.com/poscon/clients/pilot/x-plane-models.git/", "c2c4e1f3697301f3f780fd7352a0892d677cd281", "2a614d81447ac29c522dfd47fd38e985cc341951")]
     public async Task UploadPackAsync(string local, string remote, string wantHex, string? haveHex = null)
     {
         ReadOnlyMemory<byte> want = wantHex.ParseHex(), have = haveHex?.ParseHex();

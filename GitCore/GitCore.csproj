@@ -6,14 +6,14 @@
 		<RootNamespace>FlyByWireless.GitCore</RootNamespace>
 		<AssemblyName>$(RootNamespace)</AssemblyName>
 		<PackageId>$(RootNamespace)</PackageId>
-		<VersionPrefix>1.0.6</VersionPrefix>
+		<VersionPrefix>1.0.7</VersionPrefix>
 		<VersionSuffix>beta</VersionSuffix>
 		<Authors>WONG Tin Chi Timothy</Authors>
 		<Description>Essentials to implement a custom managed Git client for incremental updates of huge downloadable contents (DLC) published to a Git repository.</Description>
 		<Copyright>Copyright (c) 2021 $(Authors)</Copyright>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<RepositoryUrl>https://github.com/wegylexy/git-core</RepositoryUrl>
-		<PackageTags>git;smart http;gitpack;zlib;zlibstream</PackageTags>
+		<PackageTags>git;smart http;gitpack;zlib;zlibstream;junction;hex</PackageTags>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
 	</PropertyGroup>
 	<ItemGroup>
